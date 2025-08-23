@@ -1,0 +1,16 @@
+name: GitHub → Discord Test
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test message to Discord
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: "📢 New Issue opened by ${{ github.actor }}: ${{ github.event.issue.title }}"
