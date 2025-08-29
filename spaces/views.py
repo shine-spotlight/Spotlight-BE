@@ -1,3 +1,7 @@
-from django.shortcuts import render
+from rest_framework.viewsets import ModelViewSet
+from .models import Space
+from .serializers import SpaceSerializer
 
-# Create your views here.
+class SpaceViewSet(ModelViewSet):
+    queryset = Space.objects.all()
+    serializer_class = SpaceSerializer

@@ -31,17 +31,30 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    'rest_framework',
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+
+    # custom apps
     'users',
     'artists',
     'spaces',
-    'categories'
+    'categories',
+    'equipmentcategories',
+    'artistequipments',
+    'spaceequipments',
+    'suggestions',
+    'likes',
+    'notifications',
+    'postings',
+    'spaceavailabledates',
+    'points',
+    'rest_framework',
+
+    
 ]
 
 MIDDLEWARE = [
