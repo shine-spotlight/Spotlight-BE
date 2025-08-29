@@ -1,14 +1,15 @@
 from django.db import models
 
+
 class User(models.Model):
-    ROLE_CHOICES = (
-        ('artist', 'Artist'),
-        ('space', 'Space'),
+    # 공통 회원
+    kakao_id = models.CharField(max_length=255, unique=True)  # 카카오 로그인 ID
+    role = models.CharField(                                # 회원 유형
+        max_length=1,
+        choices=[('A', 'Artist'), ('S', 'Space')]
     )
-    kakao_id = models.CharField(max_length=255, unique=True)
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
-    phone_number = models.BigIntegerField(null=True, blank=True)  # created_at 절대 여기 들어가면 안됨
-    created_at = models.DateTimeField(auto_now_add=True)          # 따로 한 줄로 정의해야 함
+    phone_number = models.BigIntegerField(null=True, blank=True)  # 연락처 (숫자만, '-' 없이)
+    created_at = models.DateTimeField(auto_now_add=True)          # 가입일
 
     def __str__(self):
-        return f"{self.role} - {self.kakao_id}"
+        return f"{self.kakao_id} ({self.get_role_display()})"
