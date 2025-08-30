@@ -3,8 +3,8 @@ from users.models import User
 from categories.models import Category
 
 class Artist(models.Model):
-    # FK: users
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    # FK: users (Artist 전용)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     # 활동 정보
     name = models.CharField(max_length=255)           # 활동명
@@ -28,6 +28,11 @@ class Artist(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # role 검증
+    def save(self, *args, **kwargs):
+        if self.user.role != "artist":
+            raise ValueError("선택한 유저는 아티스트 계정이 아닙니다.")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
-
