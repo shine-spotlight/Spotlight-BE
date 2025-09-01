@@ -4,5 +4,5 @@ from .models import Like
 
 @admin.register(Like)
 class LikeAdmin(admin.ModelAdmin):
-    list_display = ("pk", "user", "target_type", "target_name", "created_at")
-    search_fields = ("target_name", "user__phone_number")
+    list_display = ("pk", "user", "artist", "space", "created_at")
+    search_fields = ("user__phone_number", "artist__name", "space__place_name")
