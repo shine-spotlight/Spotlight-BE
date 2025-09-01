@@ -1,7 +1,7 @@
-from rest_framework.viewsets import ModelViewSet
+from rest_framework import viewsets
 from .models import Space
 from .serializers import SpaceSerializer
 
-class SpaceViewSet(ModelViewSet):
+class SpaceViewSet(viewsets.ModelViewSet):
     queryset = Space.objects.all()
     serializer_class = SpaceSerializer
