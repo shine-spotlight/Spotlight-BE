@@ -3,5 +3,5 @@ from .models import Suggestion
 from .serializers import SuggestionSerializer
 
 class SuggestionViewSet(viewsets.ModelViewSet):
-    queryset = Suggestion.objects.all().order_by("-created_at")
+    queryset = Suggestion.objects.all()
     serializer_class = SuggestionSerializer

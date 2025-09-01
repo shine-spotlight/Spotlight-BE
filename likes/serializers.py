@@ -3,23 +3,20 @@ from .models import Like
 
 
 class LikeSerializer(serializers.ModelSerializer):
-    user_phone_number = serializers.CharField(
-        source="user.phone_number", read_only=True
-    )
+    user_phone = serializers.CharField(source="user.phone_number", read_only=True)
+    artist_name = serializers.CharField(source="artist.name", read_only=True)
+    space_name = serializers.CharField(source="space.place_name", read_only=True)
 
     class Meta:
         model = Like
-        fields = ["pk", "user", "user_phone_number", "target_type", "target_name", "created_at"]
+        fields = "__all__"
+        read_only_fields = ["created_at", "user_phone", "artist_name", "space_name"]
 
     def validate(self, data):
-        """
-        중복 좋아요 방지
-        """
-        user = data.get("user")
-        target_type = data.get("target_type")
-        target_name = data.get("target_name")
-
-        if Like.objects.filter(user=user, target_type=target_type, target_name=target_name).exists():
-            raise serializers.ValidationError("이미 좋아요를 누르셨습니다.")
-
+        artist = data.get("artist")
+        space = data.get("space")
+        if artist and space:
+            raise serializers.ValidationError("아티스트와 공간을 동시에 선택할 수 없습니다.")
+        if not artist and not space:
+            raise serializers.ValidationError("아티스트 또는 공간 중 하나를 선택해야 합니다.")
         return data

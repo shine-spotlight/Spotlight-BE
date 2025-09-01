@@ -3,14 +3,5 @@ from .models import Suggestion
 
 @admin.register(Suggestion)
 class SuggestionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "sender",
-        "receiver",
-        "status",
-        "is_free_allowed_suggestion",
-        "is_performed_confirmed",
-        "created_at",
-    )
-    list_filter = ("status", "is_free_allowed_suggestion", "is_performed_confirmed")
-    search_fields = ("sender__kakao_id", "receiver__kakao_id", "description")
+    list_display = ("pk", "sender_type", "artist_id", "space_id", "is_accepted", "is_free_allowed", "is_performed_confirmed", "created_at")
+    search_fields = ("artist_id__name", "space_id__place_name")
