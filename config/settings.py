@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     'likes',
     'notifications',
     'postings',
-    'spaceavailabledates',
+    'demand',
     'points',
     'rest_framework',
 

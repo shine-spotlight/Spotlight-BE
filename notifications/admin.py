@@ -1,8 +1,7 @@
 from django.contrib import admin
 from .models import Notification
 
-
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display = ("pk", "user", "content", "target_link", "is_read", "created_at")
+    list_display = ("id", "user", "content", "target_link", "is_read", "created_at")
     search_fields = ("user__phone_number", "content")

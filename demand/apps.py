@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class SpaceavailabledatesConfig(AppConfig):
+class DemandConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "spaceavailabledates"
+    name = "demand"

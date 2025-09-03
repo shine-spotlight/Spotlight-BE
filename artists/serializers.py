@@ -1,27 +1,27 @@
 from rest_framework import serializers
 from .models import Artist
-from categories.models import Category
-
-
-class CategorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Category
-        fields = ['id', 'name']  # 필요한 필드만 노출
-
 
 class ArtistSerializer(serializers.ModelSerializer):
-    # 응답용 (category 객체 전체 반환)
-    category = CategorySerializer(read_only=True)
-
-    # 요청용 (category id로 전달받아 매핑)
-    category_id = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(),
-        source='category',
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
+    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
 
     class Meta:
         model = Artist
-        fields = '__all__'
+        fields = [
+            "id",
+            "user",
+            "name",
+            "bio",
+            "number_of_members",
+            "category",
+            "custom_category",
+            "category_name",
+            "portfolio_links",
+            "profile_image_url",
+            "region",
+            "desired_pay",
+            "is_free_allowed",
+            "phone_number",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]

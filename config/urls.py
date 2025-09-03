@@ -33,7 +33,10 @@ from likes.views import LikeViewSet
 from notifications.views import NotificationViewSet
 from postings.views import PostingViewSet
 from points.views import PointViewSet
-from spaceavailabledates.views import SpaceAvailableDateViewSet
+
+from points.views import PointTransactionViewSet
+
+
 
 
 
@@ -63,7 +66,8 @@ router.register(r'likes', LikeViewSet)
 router.register(r'notifications', NotificationViewSet)
 router.register(r'postings', PostingViewSet)
 router.register(r'points', PointViewSet)
-router.register(r'spaceavailabledates', SpaceAvailableDateViewSet)
+
+
 
 
 
