@@ -3,5 +3,14 @@ from .models import Artist
 
 @admin.register(Artist)
 class ArtistAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'name', 'user', 'desired_pay', 'created_at')  
-    search_fields = ('name', 'bio')
+    list_display = (
+        "id",
+        "user",
+        "name",
+        "number_of_members",
+        "category",
+        "desired_pay",
+        "is_free_allowed",
+        "created_at",
+    )
+    search_fields = ("name", "user__kakao_id")

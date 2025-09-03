@@ -1,24 +1,29 @@
 from rest_framework import serializers
 from .models import Suggestion
+from artists.models import Artist
+from spaces.models import Space
 
 class SuggestionSerializer(serializers.ModelSerializer):
     artist_name = serializers.CharField(source="artist_id.name", read_only=True)
     space_name = serializers.CharField(source="space_id.place_name", read_only=True)
+    artist_phone = serializers.CharField(source="artist_id.user.phone_number", read_only=True)
+    space_phone = serializers.CharField(source="space_id.user.phone_number", read_only=True)
 
     class Meta:
         model = Suggestion
-        fields = "__all__"
-        read_only_fields = ["created_at", "artist_name", "space_name"]
-
-    def update(self, instance, validated_data):
-        user = self.context["request"].user
-
-        # 아티스트만 is_free_allowed 수정 가능
-        if "is_free_allowed" in validated_data and user.role != "artist":
-            raise serializers.ValidationError("아티스트만 무료 공연 여부를 수정할 수 있습니다.")
-
-        # 공간만 is_performed_confirmed 수정 가능
-        if "is_performed_confirmed" in validated_data and user.role != "space":
-            raise serializers.ValidationError("공간 보유자만 공연 완료 확인을 할 수 있습니다.")
-
-        return super().update(instance, validated_data)
+        fields = [
+            "id",
+            "sender_type",
+            "artist_id",
+            "space_id",
+            "message",
+            "is_accepted",
+            "is_free_allowed",
+            "is_performed_confirmed",
+            "artist_name",
+            "space_name",
+            "artist_phone",
+            "space_phone",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
