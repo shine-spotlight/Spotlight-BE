@@ -34,7 +34,11 @@ from notifications.views import NotificationViewSet
 from postings.views import PostingViewSet
 from points.views import PointViewSet
 
-from points.views import PointTransactionViewSet
+#from points.views import PointTransactionViewSet
+from adminapi.views import AdminViewSet
+
+
+
 
 
 
@@ -66,6 +70,11 @@ router.register(r'likes', LikeViewSet)
 router.register(r'notifications', NotificationViewSet)
 router.register(r'postings', PostingViewSet)
 router.register(r'points', PointViewSet)
+from demandapi.views import DemandViewSet
+from adminapi.views import AdminViewSet
+
+router.register(r'demand', DemandViewSet, basename='demand')
+router.register(r'admin', AdminViewSet, basename='admin')
 
 
 
