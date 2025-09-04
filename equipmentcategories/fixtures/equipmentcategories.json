@@ -1,0 +1,12 @@
+[
+  {"model": "equipmentcategories.equipmentcategory", "pk": 1, "fields": {"name": "마이크"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 2, "fields": {"name": "스피커"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 3, "fields": {"name": "믹서"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 4, "fields": {"name": "앰프"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 5, "fields": {"name": "조명"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 6, "fields": {"name": "프로젝터"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 7, "fields": {"name": "디제이장비"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 8, "fields": {"name": "드럼"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 9, "fields": {"name": "건반"}},
+  {"model": "equipmentcategories.equipmentcategory", "pk": 10, "fields": {"name": "기타앰프"}}
+]
