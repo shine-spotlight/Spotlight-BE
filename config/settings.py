@@ -50,9 +50,10 @@ INSTALLED_APPS = [
     'likes',
     'notifications',
     'postings',
-    'demand',
+    'demandapi',
     'points',
     'rest_framework',
+    'adminapi',
 
     
 ]
