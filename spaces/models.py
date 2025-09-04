@@ -1,58 +1,66 @@
+import re
 from django.db import models
 from users.models import User
-from categories.models import Category  # 공연/전시 카테고리 FK 참조
+from categories.models import Category
+
+
+class SpaceCategory(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
 
 
 class Space(models.Model):
     id = models.AutoField(primary_key=True)
 
-    # FK: users (Space 전용, phone_number는 User에서만 관리)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     # 공간 기본 정보
-    place_name = models.CharField(max_length=255)        # 공간명
-    address = models.TextField()                         # 상세 주소
-    kakao_map_link = models.URLField(max_length=500)     # 카카오맵 URL
-    category = models.CharField(
-        max_length=50,
-        choices=[
-            ('카페', '카페'),
-            ('소극장', '소극장'),
-            ('공공기관', '공공기관'),
-            ('기업', '기업'),
-        ]
-    )
-    description = models.TextField(blank=True, null=True)  # 공간 설명
+    place_name = models.CharField(max_length=255)         # 공간명
+    address = models.TextField()                          # 전체 주소 (도로명)
+    postal_code = models.CharField(max_length=10, blank=True, null=True)  # ✅ 우편번호
+    kakao_map_link = models.URLField(max_length=500)      # 카카오맵 URL
 
-    # 수용 인원
+    category = models.ForeignKey(SpaceCategory, on_delete=models.SET_NULL, null=True, blank=True)
+    description = models.TextField(blank=True, null=True)
+
     capacity_seated = models.IntegerField(blank=True, null=True)
     capacity_standing = models.IntegerField(blank=True, null=True)
 
-    # 공연 선호 카테고리
     preferred_categories = models.ManyToManyField(Category, blank=True)
-
-    # 기획 공연 의사 여부
     is_planning_host = models.BooleanField(default=False)
-
-    # 사업자 등록번호
     business_registration_number = models.CharField(max_length=10, unique=True)
-
-    # ✅ 분위기 키워드 (JSON)
     atmosphere = models.JSONField(default=list, blank=True)
 
-    # ✅ 카카오맵 관련 필드
-    place_region = models.CharField(max_length=100, blank=True, null=True)  # 기초지자체 단위
-    place_image_url = models.URLField(blank=True, null=True)                # 공간 이미지 URL
+    # ✅ 자동 저장 (프론트 입력 불가)
+    place_region = models.CharField(max_length=100, blank=True, null=True, editable=False)
+    place_image_url = models.URLField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # role 검증
     def save(self, *args, **kwargs):
-        if self.user.role != "space":  # ✅ User.role은 'S' (Space)
+        # ✅ role 검증
+        if self.user.role != "space":
             raise ValueError("선택한 유저는 공간 보유자 계정이 아닙니다.")
+
+        # ✅ address에서 "시 + 구/군" 추출
+        self.place_region = self.extract_region_from_address(self.address)
+
         super().save(*args, **kwargs)
 
-    # ✅ User.phone_number 읽기 전용 프로퍼티
+    @staticmethod
+    def extract_region_from_address(address):
+        """
+        주소 문자열에서 '서울시 관악구', '경남 진주시' 같은 형태로 추출
+        """
+        # 패턴: "OO시 OO구", "OO시 OO군", "OO도 OO시"
+        match = re.search(r'([가-힣]+(시|도)\s?[가-힣]+(구|군|시))', address)
+        if match:
+            return match.group(1)
+        return None
+
     @property
     def phone_number(self):
         return self.user.phone_number

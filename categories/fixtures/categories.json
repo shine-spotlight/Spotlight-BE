@@ -1,0 +1,12 @@
+[
+  {"model": "categories.category", "pk": 1, "fields": {"name": "디제잉"}},
+  {"model": "categories.category", "pk": 2, "fields": {"name": "밴드"}},
+  {"model": "categories.category", "pk": 3, "fields": {"name": "싱어송라이터"}},
+  {"model": "categories.category", "pk": 4, "fields": {"name": "악기연주"}},
+  {"model": "categories.category", "pk": 5, "fields": {"name": "연극"}},
+  {"model": "categories.category", "pk": 6, "fields": {"name": "무용"}},
+  {"model": "categories.category", "pk": 7, "fields": {"name": "전시"}},
+  {"model": "categories.category", "pk": 8, "fields": {"name": "스탠드업코미디"}},
+  {"model": "categories.category", "pk": 9, "fields": {"name": "토크"}}
+]
+
