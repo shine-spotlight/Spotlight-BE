@@ -62,7 +62,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
         artist.save()
         return Response(ArtistSerializer(artist).data)
 
-    # 필터링
+    # 5. 필터링 API
     @action(detail=False, methods=["get"])
     def filter(self, request):
         queryset = self.queryset
@@ -72,13 +72,19 @@ class ArtistViewSet(viewsets.ModelViewSet):
         pay_max = request.query_params.get("pay_max")
 
         if region:
-            queryset = queryset.filter(region__icontains=region)
+            # JSONField라 contains 사용 (region 배열 안에 값이 있는지 확인)
+            queryset = queryset.filter(region__contains=[region])
+
         if category:
-            queryset = queryset.filter(category__name__icontains=category)
+            # pk 기반 검색
+            queryset = queryset.filter(category__id=category)
+
         if pay_min:
-            queryset = queryset.filter(desired_pay__gte=pay_min)
+            queryset = queryset.filter(desired_pay__gte=int(pay_min))
+
         if pay_max:
-            queryset = queryset.filter(desired_pay__lte=pay_max)
+            queryset = queryset.filter(desired_pay__lte=int(pay_max))
 
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+

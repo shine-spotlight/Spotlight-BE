@@ -9,11 +9,20 @@ class SpaceCategorySerializer(serializers.ModelSerializer):
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # FK: User.phone_number 읽기 전용
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+
     category = SpaceCategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
-        queryset=SpaceCategory.objects.all(), source="category", write_only=True
+        queryset=SpaceCategory.objects.all(),
+        source="category",
+        write_only=True
+    )
+
+    # atmosphere → 여기서 배열로 강제 검증
+    atmosphere = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list
     )
 
     class Meta:
@@ -34,7 +43,7 @@ class SpaceSerializer(serializers.ModelSerializer):
             "is_planning_host",
             "business_registration_number",
             "atmosphere",
-            "place_region",   # ✅ 자동 생성 (read_only)
+            "place_region",
             "place_image_url",
             "phone_number",
             "created_at",
