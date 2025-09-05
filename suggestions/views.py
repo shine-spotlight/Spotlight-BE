@@ -3,58 +3,75 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Suggestion
 from .serializers import SuggestionSerializer
-from notifications.models import Notification  # ✅ 알림 추가
 
 
 class SuggestionViewSet(viewsets.ModelViewSet):
-    queryset = Suggestion.objects.all()
+    queryset = Suggestion.objects.all().order_by("-created_at")
     serializer_class = SuggestionSerializer
 
-    # ✅ 제안 생성 시 알림 (제안 받은 사람에게)
+    # ✅ 제안 생성
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         suggestion = serializer.save()
-
-        # 알림 전송
-        if suggestion.sender_type == "artist":
-            # 아티스트 → 공간
-            Notification.objects.create(
-                user=suggestion.space.user,
-                content=f"{suggestion.artist.name}이(가) 제안을 보냈습니다.",
-                target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{suggestion.id}/"
-            )
-        else:
-            # 공간 → 아티스트
-            Notification.objects.create(
-                user=suggestion.artist.user,
-                content=f"{suggestion.space.place_name}이(가) 제안을 보냈습니다.",
-                target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{suggestion.id}/"
-            )
-
         return Response(self.get_serializer(suggestion).data, status=status.HTTP_201_CREATED)
 
-    # ✅ 제안 수락 시 알림 (보낸 사람에게)
+    
+        # ✅ 제안 수락 시 연락처 공개
     @action(detail=True, methods=["patch"])
     def accept(self, request, pk=None):
         suggestion = self.get_object()
         suggestion.is_accepted = True
         suggestion.save()
 
-        # 알림 전송
-        if suggestion.sender_type == "artist":
-            # 아티스트가 보냈다면 → 아티스트에게 수락 알림
-            Notification.objects.create(
-                user=suggestion.artist.user,
-                content=f"{suggestion.space.place_name}이(가) 당신의 제안을 수락했습니다.",
-                target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{suggestion.id}/"
-            )
-        else:
-            # 공간이 보냈다면 → 공간 보유자에게 수락 알림
-            Notification.objects.create(
-                user=suggestion.space.user,
-                content=f"{suggestion.artist.name}이(가) 당신의 제안을 수락했습니다.",
-                target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{suggestion.id}/"
-            )
+        data = self.get_serializer(suggestion).data
 
-        return Response(SuggestionSerializer(suggestion).data, status=status.HTTP_200_OK)
+        # ✅ 연락처 공개: 아티스트 → 공간 / 공간 → 아티스트
+        if suggestion.sender_type == "artist":
+            data["receiver_phone"] = suggestion.space_id.user.phone_number
+        else:
+            data["receiver_phone"] = suggestion.artist_id.user.phone_number
+
+        return Response(data, status=status.HTTP_200_OK)
+
+
+    # ✅ 받은 제안 조회
+    @action(detail=False, methods=["get"])
+    def received(self, request):
+        receiver_type = request.query_params.get("receiver_type")
+        receiver_id = request.query_params.get("receiver_id")
+
+        queryset = self.queryset
+        if receiver_type == "artist":
+            queryset = queryset.filter(artist_id__id=receiver_id)
+        elif receiver_type == "space":
+            queryset = queryset.filter(space_id__id=receiver_id)
+
+        return Response(self.get_serializer(queryset, many=True).data, status=status.HTTP_200_OK)
+
+    # ✅ 보낸 제안 조회
+    @action(detail=False, methods=["get"])
+    def sent(self, request):
+        sender_type = request.query_params.get("sender_type")
+        sender_id = request.query_params.get("sender_id")
+
+        queryset = self.queryset
+        if sender_type == "artist":
+            queryset = queryset.filter(sender_type="artist", artist_id__id=sender_id)
+        elif sender_type == "space":
+            queryset = queryset.filter(sender_type="space", space_id__id=sender_id)
+
+        return Response(self.get_serializer(queryset, many=True).data, status=status.HTTP_200_OK)
+    @action(detail=True, methods=["patch"])
+    def status(self, request, pk=None):
+        suggestion = self.get_object()
+        new_status = request.data.get("is_accepted")
+
+        if new_status is None:
+            return Response({"error": "is_accepted 값이 필요합니다."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        suggestion.is_accepted = new_status
+        suggestion.save()
+
+        return Response(self.get_serializer(suggestion).data, status=status.HTTP_200_OK)

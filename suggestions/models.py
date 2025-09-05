@@ -21,8 +21,8 @@ class Suggestion(models.Model):
     message = models.TextField()
 
     # 상태값
-    is_accepted = models.BooleanField(default=False)  # 제안 수락 여부 (수락 시 API로 업데이트)
-    is_free_allowed = models.BooleanField(default=False)       # 아티스트 전용
+    is_accepted = models.BooleanField(default=False)          # 제안 수락 여부
+    is_free_allowed = models.BooleanField(default=False)      # 아티스트 전용
     is_performed_confirmed = models.BooleanField(default=False)  # 공간 전용
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -37,8 +37,7 @@ class Suggestion(models.Model):
         if self.sender_type == "space" and self.is_free_allowed:
             raise ValidationError("공간 제안에는 'is_free_allowed'를 사용할 수 없습니다.")
 
-    # ✅ 저장 전에 항상 clean() 실행되도록
+    # ✅ 저장 전에 항상 clean() 실행
     def save(self, *args, **kwargs):
-        self.full_clean()  # clean() 자동 호출
-
- 
+        self.full_clean()
+        super().save(*args, **kwargs)
