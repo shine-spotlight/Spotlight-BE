@@ -8,5 +8,5 @@
   {"model": "equipmentcategories.equipmentcategory", "pk": 7, "fields": {"name": "디제이장비"}},
   {"model": "equipmentcategories.equipmentcategory", "pk": 8, "fields": {"name": "드럼"}},
   {"model": "equipmentcategories.equipmentcategory", "pk": 9, "fields": {"name": "건반"}},
-  {"model": "equipmentcategories.equipmentcategory", "pk": 10, "fields": {"name": "기타앰프"}}
+  {"model": "equipmentcategories.equipmentcategory", "pk": 10, "fields": {"name": "직접 입력"}}
 ]

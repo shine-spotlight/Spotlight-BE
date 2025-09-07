@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import Posting
 
+
 @admin.register(Posting)
 class PostingAdmin(admin.ModelAdmin):
     list_display = (
@@ -12,4 +13,5 @@ class PostingAdmin(admin.ModelAdmin):
         "date",
         "created_at",
     )
+    list_filter = ("price_type", "date")
     search_fields = ("title", "space__place_name")

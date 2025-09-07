@@ -1,74 +1,113 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db import transaction
+
 from .models import Like
 from .serializers import LikeSerializer
-from notifications.models import Notification
+from artists.models import Artist
+from spaces.models import Space
+from notifications.models import Notification   # ✅ 추가
 
 
-class LikeViewSet(viewsets.ModelViewSet):
+def bad_request(detail: str, field: str = ""):
+    payload = {"detail": detail, "code": "invalid_param"}
+    if field:
+        payload["field"] = field
+    return Response(payload, status=400)
+
+
+def forbidden(detail: str, field: str = ""):
+    payload = {"detail": detail, "code": "permission_denied"}
+    if field:
+        payload["field"] = field
+    return Response(payload, status=403)
+
+
+class LikeViewSet(viewsets.GenericViewSet):
     queryset = Like.objects.all().order_by("-created_at")
     serializer_class = LikeSerializer
 
-    # 내가 찜한 목록 (artist_id, space_id 기준)
+    # 1) 아티스트 찜 토글
+    @action(detail=False, methods=["post"], url_path="artists")
+    @transaction.atomic
+    def like_artist(self, request):
+        artist_id = request.data.get("artist_id")
+        if not artist_id:
+            return bad_request("artist_id는 필수입니다.", "artist_id")
+
+        try:
+            artist = Artist.objects.get(pk=artist_id)
+        except Artist.DoesNotExist:
+            return bad_request("존재하지 않는 artist_id 입니다.", "artist_id")
+
+        # role guard (관리자면 통과)
+        if not request.user.is_superuser and request.user.role != "space":
+            return forbidden("아티스트는 공간 보유자만 찜할 수 있습니다.", "role")
+
+        like, created = Like.objects.get_or_create(
+            user_id=request.user.id,
+            artist_id=artist_id
+        )
+        if not created:
+            like.delete()
+            return Response({"liked": False}, status=200)
+
+        # ✅ 알림 생성
+        Notification.objects.create(
+            user=artist.user,
+            content=f"{request.user} 님이 {artist.name} 아티스트를 찜했습니다.",
+            target_link=f"http://127.0.0.1:8000/api/v1/artists/{artist.id}/"
+        )
+
+        return Response({"liked": True}, status=201)
+
+    # 2) 공간 찜 토글
+    @action(detail=False, methods=["post"], url_path="spaces")
+    @transaction.atomic
+    def like_space(self, request):
+        space_id = request.data.get("space_id")
+        if not space_id:
+            return bad_request("space_id는 필수입니다.", "space_id")
+
+        try:
+            space = Space.objects.get(pk=space_id)
+        except Space.DoesNotExist:
+            return bad_request("존재하지 않는 space_id 입니다.", "space_id")
+
+        # role guard (관리자면 통과)
+        if not request.user.is_superuser and request.user.role != "artist":
+            return forbidden("공간은 아티스트만 찜할 수 있습니다.", "role")
+
+        like, created = Like.objects.get_or_create(
+            user_id=request.user.id,
+            space_id=space_id
+        )
+        if not created:
+            like.delete()
+            return Response({"liked": False}, status=200)
+
+        # ✅ 알림 생성
+        Notification.objects.create(
+            user=space.user,
+            content=f"{request.user} 님이 {space.place_name} 공간을 찜했습니다.",
+            target_link=f"http://127.0.0.1:8000/api/v1/spaces/{space.id}/"
+        )
+
+        return Response({"liked": True}, status=201)
+
+    # 3) 내가 찜한 목록
     def list(self, request, *args, **kwargs):
         user_id = request.query_params.get("user_id")
         if not user_id:
-            return Response({"error": "user_id 쿼리 파라미터 필요"}, status=400)
-        queryset = self.queryset.filter(user__id=user_id)
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
+            return bad_request("user_id는 필수입니다.", "user_id")
 
-    # 아티스트 좋아요 토글
-    @action(detail=False, methods=["post"], url_path="artists")
-    def like_artist(self, request):
-        user_id = request.data.get("user_id")
-        artist_id = request.data.get("artist_id")
+        if not request.user.is_superuser and str(request.user.id) != str(user_id):
+            return forbidden("본인만 자신의 찜 목록을 볼 수 있습니다.", "user_id")
 
-        if not (user_id and artist_id):
-            return Response({"error": "user_id, artist_id 필수"}, status=400)
-
-        existing = Like.objects.filter(user_id=user_id, artist_id=artist_id)
-        if existing.exists():
-            existing.delete()
-            return Response({"liked": False}, status=200)
-
-        like = Like.objects.create(user_id=user_id, artist_id=artist_id)
-
-        # 알림 생성
-        Notification.objects.create(
-            user=like.artist.user,
-            content=f"{like.user.id}번 유저가 {like.artist.name}을(를) 찜했습니다.",
-            target_link=f"http://127.0.0.1:8000/api/v1/artists/{like.artist.id}/"
-        )
-
-        data = self.serializer_class(like).data
-        data["liked"] = True
-        return Response(data, status=201)
-
-    # 공간 좋아요 토글
-    @action(detail=False, methods=["post"], url_path="spaces")
-    def like_space(self, request):
-        user_id = request.data.get("user_id")
-        space_id = request.data.get("space_id")
-
-        if not (user_id and space_id):
-            return Response({"error": "user_id, space_id 필수"}, status=400)
-
-        existing = Like.objects.filter(user_id=user_id, space_id=space_id)
-        if existing.exists():
-            existing.delete()
-            return Response({"liked": False}, status=200)
-
-        like = Like.objects.create(user_id=user_id, space_id=space_id)
-
-        # 알림 생성
-        Notification.objects.create(
-            user=like.space.user,
-            content=f"{like.user.id}번 유저가 {like.space.place_name}을(를) 찜했습니다.",
-            target_link=f"http://127.0.0.1:8000/api/v1/spaces/{like.space.id}/"
-        )
-
-        data = self.serializer_class(like).data
-        data["liked"] = True
-        return Response(data, status=201)
+        qs = self.queryset.filter(user_id=user_id)
+        page = self.paginate_queryset(qs)
+        ser = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(ser.data)
+        return Response(ser.data, status=200)

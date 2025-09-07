@@ -5,54 +5,28 @@ from spaces.models import Space
 
 
 class LikeSerializer(serializers.ModelSerializer):
-    artist_id = serializers.IntegerField(source="artist.id", read_only=True)
-    artist_name = serializers.CharField(source="artist.name", read_only=True)
-    space_id = serializers.IntegerField(source="space.id", read_only=True)
-    space_name = serializers.CharField(source="space.place_name", read_only=True)
-    liked = serializers.SerializerMethodField()
-    user_info = serializers.SerializerMethodField()  # ✅ 좋아요 누른 사람 요약
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    target_type = serializers.SerializerMethodField()
+    target_id = serializers.SerializerMethodField()
+    target_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Like
-        fields = [
-            "id",
-            "artist_id",
-            "artist_name",
-            "space_id",
-            "space_name",
-            "liked",
-            "user_info",
-            "created_at",
-        ]
-        read_only_fields = [
-            "id",
-            "artist_id",
-            "artist_name",
-            "space_id",
-            "space_name",
-            "liked",
-            "user_info",
-            "created_at",
-        ]
+        fields = ["id", "user_id", "target_type", "target_id", "target_name", "created_at"]
 
-    def get_liked(self, obj):
-        return True
+    def get_target_type(self, obj):
+        if obj.artist_id:
+            return "artist"
+        if obj.space_id:
+            return "space"
+        return None
 
-    def get_user_info(self, obj):
-        """유저 → role에 따라 닉네임/공간명 반환"""
-        user_id = obj.user.id
-        nickname = None
+    def get_target_id(self, obj):
+        return obj.artist_id or obj.space_id
 
-        if obj.user.role == "artist":
-            artist = Artist.objects.filter(user=obj.user).first()
-            if artist:
-                nickname = artist.name
-        elif obj.user.role == "space":
-            space = Space.objects.filter(user=obj.user).first()
-            if space:
-                nickname = space.place_name
-
-        return {
-            "id": user_id,
-            "nickname": nickname
-        }
+    def get_target_name(self, obj):
+        if obj.artist:
+            return obj.artist.name
+        if obj.space:
+            return obj.space.place_name
+        return None
