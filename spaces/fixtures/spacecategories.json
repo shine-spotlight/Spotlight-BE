@@ -6,7 +6,7 @@
   {"model": "spaces.spacecategory", "pk": 5, "fields": {"name": "소극장"}},
   {"model": "spaces.spacecategory", "pk": 6, "fields": {"name": "갤러리"}},
   {"model": "spaces.spacecategory", "pk": 7, "fields": {"name": "펍 / 바"}},
-  {"model": "spaces.spacecategory", "pk": 8, "fields": {"name": "학교"}},
+  {"model": "spaces.spacecategory", "pk": 8, "fields": {"name": "회사"}},
   {"model": "spaces.spacecategory", "pk": 9, "fields": {"name": "공공기관"}},
-  {"model": "spaces.spacecategory", "pk": 10, "fields": {"name": "회사"}}
+  {"model": "spaces.spacecategory", "pk": 10, "fields": {"name": "직접 입력"}}
 ]

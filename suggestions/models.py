@@ -1,43 +1,46 @@
 from django.db import models
-from django.core.exceptions import ValidationError
+from django.db.models import Q
 from artists.models import Artist
 from spaces.models import Space
+from postings.models import Posting
 
 
 class Suggestion(models.Model):
-    # 제안 주체: 아티스트 → 공간 / 공간 → 아티스트
-    SENDER_TYPE_CHOICES = [
-        ("artist", "Artist → Space"),
-        ("space", "Space → Artist"),
-    ]
+    SENDER_ARTIST = "artist"
+    SENDER_SPACE = "space"
+    SENDER_TYPES = (
+        (SENDER_ARTIST, "artist"),
+        (SENDER_SPACE, "space"),
+    )
 
-    sender_type = models.CharField(max_length=10, choices=SENDER_TYPE_CHOICES)
+    sender_type = models.CharField(max_length=10, choices=SENDER_TYPES)
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="suggestions_as_artist")
+    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="suggestions_as_space")
+    posting = models.ForeignKey(Posting, on_delete=models.SET_NULL, blank=True, null=True, related_name="suggestions")
 
-    # FK
-    artist_id = models.ForeignKey(Artist, on_delete=models.CASCADE)
-    space_id = models.ForeignKey(Space, on_delete=models.CASCADE)
-
-    # 제안 메시지
     message = models.TextField()
 
-    # 상태값
-    is_accepted = models.BooleanField(default=False)          # 제안 수락 여부
-    is_free_allowed = models.BooleanField(default=False)      # 아티스트 전용
-    is_performed_confirmed = models.BooleanField(default=False)  # 공간 전용
+    # 조건부 필드 — 아티스트 전용 / 공간 전용
+    is_free_allowed = models.BooleanField(blank=True, null=True)          # artist sender 전용
+    is_performed_confirmed = models.BooleanField(blank=True, null=True)   # space sender 전용
+
+    # 상태: None(대기) / True(수락) / False(거절)
+    is_accepted = models.BooleanField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        #constraints = [
+            # 진행중(대기) 상태 중복 방지: 같은 artist-space 조합의 pending은 1건만
+            #models.UniqueConstraint(
+            #    fields=["artist", "space"],
+            #    condition=Q(is_accepted__isnull=True),
+            #    name="uniq_pending_suggestion_artist_space",
+            #),
+        #]
+        pass
+    
 
     def __str__(self):
-        return f"Suggestion from {self.sender_type} ({self.artist_id} ↔ {self.space_id})"
-
-    # ✅ 무결성 검증
-    def clean(self):
-        if self.sender_type == "artist" and self.is_performed_confirmed:
-            raise ValidationError("아티스트 제안에는 'is_performed_confirmed'를 사용할 수 없습니다.")
-        if self.sender_type == "space" and self.is_free_allowed:
-            raise ValidationError("공간 제안에는 'is_free_allowed'를 사용할 수 없습니다.")
-
-    # ✅ 저장 전에 항상 clean() 실행
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
+        return f"[{self.id}] {self.sender_type} -> A{self.artist_id}/S{self.space_id}"

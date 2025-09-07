@@ -3,27 +3,52 @@ from .models import Posting
 from categories.models import Category
 from spaces.models import Space
 
+
 class PostingSerializer(serializers.ModelSerializer):
-    space_name = serializers.CharField(source="space.place_name", read_only=True)
-    categories = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Category.objects.all()
+    # write: *_id / *_ids, read: 전개
+    space_id = serializers.PrimaryKeyRelatedField(
+        queryset=Space.objects.all(), source="space", write_only=True, required=False
     )
-    category_names = serializers.StringRelatedField(source="categories", many=True, read_only=True)
+    category_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), source="categories", many=True, write_only=True, required=False
+    )
+    categories = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Posting
         fields = [
             "id",
-            "space",
-            "space_name",
+            "space",       # read-only FK
+            "space_id",    # write-only
             "title",
             "description",
+            "posting_image",
             "posting_image_url",
-            "categories",
-            "category_names",
+            "categories",   # read
+            "category_ids", # write
             "price_type",
             "price_amount",
             "date",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "space", "categories"]
+
+    def validate_posting_image_url(self, url):
+        if url and not (str(url).startswith("http://") or str(url).startswith("https://")):
+            raise serializers.ValidationError("posting_image_url은 http:// 또는 https:// 이어야 합니다.")
+        return url
+
+    def validate(self, attrs):
+        # price 규칙
+        price_type = attrs.get("price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE))
+        price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
+        if price_type == Posting.PRICE_PAID and price_amount is None:
+            raise serializers.ValidationError(
+                {"price_amount": "price_type=paid일 때 price_amount는 필수입니다."}
+            )
+        if price_type in (Posting.PRICE_FREE, Posting.PRICE_NEGOTIABLE):
+            attrs["price_amount"] = None
+        return attrs
+
+    def get_categories(self, obj):
+        return list(obj.categories.values("id", "name"))

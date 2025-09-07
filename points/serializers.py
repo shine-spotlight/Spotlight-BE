@@ -1,20 +1,11 @@
 from rest_framework import serializers
 from .models import PointTransaction
 
-class PointTransactionSerializer(serializers.ModelSerializer):
-    user_phone = serializers.CharField(source="user.phone_number", read_only=True)
-    balance = serializers.IntegerField(read_only=True)
 
+class PointTransactionSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
 
     class Meta:
         model = PointTransaction
-        fields = [
-            "id",
-            "user",
-            "transaction_type",
-            "amount",
-            "created_at",
-            "user_phone",
-            "balance",
-        ]
-        read_only_fields = ["id", "created_at", "balance"]
+        fields = ["id", "user_id", "amount", "transaction_type", "created_at"]
+        read_only_fields = ["id", "user_id", "transaction_type", "created_at"]

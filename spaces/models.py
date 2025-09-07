@@ -2,14 +2,7 @@ import re
 from django.db import models
 from users.models import User
 from categories.models import Category
-
-
-class SpaceCategory(models.Model):
-    id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=50, unique=True)
-
-    def __str__(self):
-        return self.name
+from equipmentcategories.models import EquipmentCategory
 
 
 class Space(models.Model):
@@ -17,28 +10,52 @@ class Space(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
-    # 공간 기본 정보
-    place_name = models.CharField(max_length=255)         # 공간명
-    address = models.TextField()                          # 전체 주소 (도로명)
-    postal_code = models.CharField(max_length=10, blank=True, null=True)  # 우편번호
-    kakao_map_link = models.URLField(max_length=500)      # 카카오맵 URL
+    # 기본 정보
+    place_name = models.CharField(max_length=255)
+    address = models.TextField()
+    postal_code = models.CharField(max_length=10, blank=True, null=True)
+    kakao_map_link = models.URLField(max_length=500)
 
-    category = models.ForeignKey(SpaceCategory, on_delete=models.SET_NULL, null=True, blank=True)
+    # 카테고리(필수) + 커스텀 텍스트 저장
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.PROTECT, 
+        related_name="main_category_spaces"   # ✅ 수정
+    )
+    preferred_categories = models.ManyToManyField(
+        Category, 
+        blank=True, 
+        related_name="preferred_spaces"       # ✅ 수정
+    )
+    custom_category = models.CharField(max_length=255, blank=True, null=True)
+
     description = models.TextField(blank=True, null=True)
 
+    # 수용 인원
     capacity_seated = models.IntegerField(blank=True, null=True)
     capacity_standing = models.IntegerField(blank=True, null=True)
 
-    preferred_categories = models.ManyToManyField(Category, blank=True)
-    is_planning_host = models.BooleanField(default=False)
-    business_registration_number = models.CharField(max_length=10, unique=True)
+    
 
-    # atmosphere → 모델에서는 그냥 JSONField (검증 X)
+    is_planning_host = models.BooleanField(default=False)
+    business_registration_number = models.CharField(max_length=20, unique=True)
+
+    # 분위기(키워드)
     atmosphere = models.JSONField(default=list, blank=True)
 
-    # 자동 저장
-    place_region = models.CharField(max_length=100, blank=True, null=True, editable=False)
+    # 이미지 업로드
+    place_image = models.ImageField(upload_to="spaces/place/", blank=True, null=True)
     place_image_url = models.URLField(blank=True, null=True)
+
+    # 보유 장비 (ManyToMany → spaceequipments 앱의 SpaceEquipment 사용)
+    equipments = models.ManyToManyField(
+        EquipmentCategory,
+        through="spaceequipments.SpaceEquipment",
+        blank=True,
+    )
+
+    # 주소 → 시/군/구 자동 추출 (제주특별자치도 제주시 포함)
+    place_region = models.CharField(max_length=100, blank=True, null=True, editable=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -50,10 +67,9 @@ class Space(models.Model):
 
     @staticmethod
     def extract_region_from_address(address):
-        match = re.search(r'([가-힣]+(시|도)\s?[가-힣]+(구|군|시))', address)
-        if match:
-            return match.group(1)
-        return None
+        # 시/군/구까지만 추출, 읍/면/동 제외
+        m = re.search(r'([가-힣]+(특별시|광역시|자치시|자치도|도)\s?[가-힣]+(시|군|구))', address or "")
+        return m.group(1) if m else None
 
     @property
     def phone_number(self):
