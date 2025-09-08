@@ -145,7 +145,7 @@ __pycache__/
 *.pyd
 
 # Virtualenv
-venv/
+.venv/
 .env/
 
 # Django stuff
