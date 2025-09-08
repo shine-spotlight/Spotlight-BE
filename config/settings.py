@@ -15,15 +15,15 @@ import dj_database_url
 import os
 import environ
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # 환경변수 로더 초기화
 env = environ.Env(
     DEBUG=(bool, False)
 )
 # .env 파일 읽기 (로컬 개발 환경에서만)
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # Quick-start development settings - unsuitable for production
