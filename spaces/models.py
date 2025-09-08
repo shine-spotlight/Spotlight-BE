@@ -66,10 +66,22 @@ class Space(models.Model):
         super().save(*args, **kwargs)
 
     @staticmethod
-    def extract_region_from_address(address):
-        # 시/군/구까지만 추출, 읍/면/동 제외
-        m = re.search(r'([가-힣]+(특별시|광역시|자치시|자치도|도)\s?[가-힣]+(시|군|구))', address or "")
-        return m.group(1) if m else None
+    def extract_region_from_address(address: str) -> str:
+
+        if not address:
+            return None
+
+    # 1. '서울시' 케이스도 허용 (특별시|광역시|자치시|자치도|도|시)
+        pattern = r'([가-힣]+(특별시|광역시|자치시|자치도|도|시)\s?[가-힣]+(시|군|구))'
+        m = re.search(pattern, address)
+        if m:
+            return m.group(1)
+
+    # 2. fallback: 그냥 앞 두 단어 리턴
+        parts = address.split()
+        if len(parts) >= 2:
+            return f"{parts[0]} {parts[1]}"
+        return parts[0] if parts else None
 
     @property
     def phone_number(self):

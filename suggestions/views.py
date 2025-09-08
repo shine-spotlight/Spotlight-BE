@@ -28,6 +28,14 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     queryset = Suggestion.objects.all().order_by("-created_at")
     serializer_class = SuggestionSerializer
 
+    @action(detail=True, methods=["post"])
+    def read(self, request, pk=None):
+        """제안서 읽음 처리"""
+        suggestion = self.get_object()
+        suggestion.is_read = True
+        suggestion.save()
+        return Response({"detail": "읽음 처리 완료", "is_read": suggestion.is_read}, status=status.HTTP_200_OK)
+
     # 생성 가드
     def _guard_sender(self, request, sender_type, artist: Artist, space: Space):
         if request.user.is_superuser:
