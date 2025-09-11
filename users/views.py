@@ -28,7 +28,7 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-    # ✅ 콜백 (인가 코드 → access_token → 유저 인증)
+    # ✅ 카카오 로그인 콜백 (인가 코드 → access_token → 유저 인증)
     @action(detail=False, methods=["get"], url_path="auth/kakao/callback")
     def kakao_callback(self, request):
         code = request.query_params.get("code")
@@ -64,10 +64,13 @@ class UserViewSet(viewsets.ModelViewSet):
         kakao_account = kakao_data.get("kakao_account", {})
         email = kakao_account.get("email") or f"{kakao_id}@kakao-user.com"
 
+        if not kakao_id:
+            return bad_request("카카오 사용자 ID를 가져올 수 없습니다", "kakao_id")
+
         # 3️⃣ 유저 생성/조회
         user, _ = User.objects.get_or_create(
             kakao_id=kakao_id,
-            defaults={"role": "artist"}  # 기본값 (role은 이후 수정 가능)
+            defaults={"role": ""}  # role은 이후 type 입력 API에서 지정
         )
 
         # 4️⃣ 장고 토큰 발급
