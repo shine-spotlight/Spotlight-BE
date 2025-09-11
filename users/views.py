@@ -56,7 +56,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        print("KAKAO TOKEN RESP:", resp_json)  # 🔎 서버 로그 확인용
+        print("KAKAO TOKEN RESP:", resp_json)
 
         if token_resp.status_code != 200:
             return Response(
@@ -64,7 +64,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     "detail": "카카오 토큰 교환 실패",
                     "code": "invalid_param",
                     "field": "code",
-                    "error": resp_json,  # 카카오 원본 에러 표시
+                    "error": resp_json,
                 },
                 status=token_resp.status_code,
             )
@@ -88,7 +88,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        print("KAKAO USER INFO:", user_info)  # 🔎 서버 로그 확인용
+        print("KAKAO USER INFO:", user_info)
 
         if resp.status_code != 200:
             return bad_request(
@@ -109,18 +109,39 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         # 3️⃣ 유저 생성/조회
-        user, _ = User.objects.get_or_create(
-            kakao_id=str(kakao_id),
-            defaults={"role": ""},
-        )
+        try:
+            user, _ = User.objects.get_or_create(
+                kakao_id=str(kakao_id),
+                defaults={"role": None},
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "유저 생성 실패", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         # 4️⃣ 장고 토큰 발급
-        token, _ = Token.objects.get_or_create(user=user)
+        try:
+            token, _ = Token.objects.get_or_create(user=user)
+        except Exception as e:
+            return Response(
+                {"detail": "토큰 발급 실패", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # 5️⃣ 직렬화
+        try:
+            user_data = UserSerializer(user).data
+        except Exception as e:
+            return Response(
+                {"detail": "유저 직렬화 실패", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {
                 "accessToken": token.key,
-                "user": UserSerializer(user).data,
+                "user": user_data,
             },
             status=status.HTTP_200_OK,
         )
