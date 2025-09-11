@@ -12,49 +12,28 @@ def _norm_to_list(value):
 
 class SpaceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    category_name = serializers.CharField(source="category.name", read_only=True)
-
-    # 입력은 *_id로
+    category = serializers.CharField(source="category.name", read_only=True)  # ✅ 문자열만 반환
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(),
         source="category",
         write_only=True,
         required=False
     )
-
-    # 읽기용 보유장비 목록
     equipments = serializers.SerializerMethodField(read_only=True)
-
-    atmosphere = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
     class Meta:
         model = Space
         fields = [
-            "id",
-            "user",
-            "place_name",
-            "address",
-            "postal_code",
-            "kakao_map_link",
-            "category",          # read-only
-            "category_id",       # write-only
-            "custom_category",
-            "description",
-            "capacity_seated",
-            "capacity_standing",
+            "id","user","place_name","address","postal_code",
+            "kakao_map_link","category","category_id","custom_category",
+            "description","capacity_seated","capacity_standing",
             "preferred_categories",
-            "is_planning_host",
-            "business_registration_number",
-            "atmosphere",
-            "place_region",
-            "place_image",
-            "place_image_url",
-            "equipments",
-            "category_name",
-            "phone_number",
-            "created_at",
+            "business_registration_number","atmosphere","place_region",
+            "place_image","place_image_url","equipments",
+            "phone_number","created_at",
         ]
-        read_only_fields = ["place_region", "phone_number", "created_at", "equipments", "category_name"]
+        read_only_fields = ["place_region","phone_number","created_at","equipments"]
+
 
     def validate_place_image_url(self, url):
         if url and not (str(url).startswith("http://") or str(url).startswith("https://")):
@@ -64,4 +43,4 @@ class SpaceSerializer(serializers.ModelSerializer):
     def validate_atmosphere(self, v): return _norm_to_list(v)
 
     def get_equipments(self, obj):
-        return list(obj.equipments.values_list("id", "name"))
+        return [e.name for e in obj.equipments.all()]  # ✅ 문자열만 반환

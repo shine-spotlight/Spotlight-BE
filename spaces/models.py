@@ -37,7 +37,7 @@ class Space(models.Model):
 
     
 
-    is_planning_host = models.BooleanField(default=False)
+    #is_planning_host = models.BooleanField(default=False)
     business_registration_number = models.CharField(max_length=20, unique=True)
 
     # 분위기(키워드)

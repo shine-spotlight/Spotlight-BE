@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-k7041yzfj=n@kcws-p)k5s(ud(9&=e#tx15jjg28db*6ncs=em"
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]  # ✅ 배포 환경에선 도메인만 지정하는 게 안전함
 
 
 # Application definition
@@ -21,8 +21,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django_extensions",
 
-    "rest_framework",   # ✅ 딱 한 번만 등록
+    "rest_framework",
     "rest_framework.authtoken",
+
+    # ✅ CORS 허용
+    "corsheaders",
 
     # custom apps
     "users",
@@ -42,6 +45,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",   # ✅ 맨 위쪽에 배치 권장
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -101,14 +105,21 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ✅ DRF 설정 (심플하게 유지)
+# ✅ DRF 설정
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
-        "rest_framework.authentication.SessionAuthentication",  # 선택
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "users.permissions.IsOwnerOrReadOnlyWithAdminPass"
     ],
 }
 
+# ✅ CORS 설정
+CORS_ALLOW_ALL_ORIGINS = True   # 개발 단계에선 전체 허용
+# 운영 시에는 특정 도메인만 허용하도록 변경 권장
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "https://spotlight-fe.vercel.app",
+# ]

@@ -15,44 +15,26 @@ def _norm_to_list(value):
 
 
 class ArtistSerializer(serializers.ModelSerializer):
-    # FK 소스 노출 예시(지침 6): 사용자 전화번호 read_only
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    category_name = serializers.CharField(source="category.name", read_only=True)
-
-    # 입력은 *_id로
+    category = serializers.CharField(source="category.name", read_only=True)  # ✅ 문자열만 반환
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(),
         source="category",
         write_only=True,
         required=False
     )
-
-    # 읽기용 장비 목록
     equipments = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
         fields = [
-            "id",
-            "user",
-            "name",
-            "bio",
-            "number_of_members",
-            "category",          # read-only 용도
-            "category_id",       # write-only 입력
-            "custom_category",
-            "category_name",
-            "equipments",
-            "portfolio_links",
-            "profile_image",
-            "profile_image_url",
-            "region",
-            "desired_pay",
-            "is_free_allowed",
-            "phone_number",
-            "created_at",
+            "id", "user", "name", "bio", "number_of_members",
+            "category", "category_id", "custom_category",
+            "equipments", "portfolio_links",
+            "profile_image", "profile_image_url", "region",
+            "desired_pay", "is_free_allowed", "phone_number", "created_at",
         ]
-        read_only_fields = ["id", "created_at", "equipments", "phone_number", "category_name"]
+        read_only_fields = ["id", "created_at", "equipments", "phone_number"]
 
     # 정규화/검증
     def validate_portfolio_links(self, v): return _norm_to_list(v)
@@ -63,5 +45,4 @@ class ArtistSerializer(serializers.ModelSerializer):
         return url
 
     def get_equipments(self, obj):
-        # [(id, name), ...] 형태
-        return list(obj.equipments.values_list("id", "name"))
+        return [e.name for e in obj.equipments.all()]  # ✅ 문자열만 반환

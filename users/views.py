@@ -1,13 +1,16 @@
+import requests
+import os
+from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-# from rest_framework.permissions import IsAuthenticated  # 운영 시 사용 고려
+from rest_framework.authtoken.models import Token
+
 from .models import User
 from .serializers import UserSerializer
 
 
-def bad_request(detail: str, field: str):
-    """프로젝트 공통 에러 포맷(400)"""
+def bad_request(detail: str, field: str = "non_field_error"):
     return Response(
         {"detail": detail, "code": "invalid_param", "field": field},
         status=status.HTTP_400_BAD_REQUEST,
@@ -15,7 +18,6 @@ def bad_request(detail: str, field: str):
 
 
 def forbidden(detail: str, field: str = "user_pk"):
-    """프로젝트 공통 에러 포맷(403)"""
     return Response(
         {"detail": detail, "code": "permission_denied", "field": field},
         status=status.HTTP_403_FORBIDDEN,
@@ -25,64 +27,63 @@ def forbidden(detail: str, field: str = "user_pk"):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    # permission_classes = [IsAuthenticated]  # 운영 시 적용 고려(현 개발/QA 단계에선 주석)
 
-    # POST /api/v1/users/{pk}/type/
-    @action(detail=True, methods=['post'])
-    def type(self, request, pk=None):
-        user = self.get_object()
+    # ✅ 콜백 (인가 코드 → access_token → 유저 인증)
+    @action(detail=False, methods=["get"], url_path="auth/kakao/callback")
+    def kakao_callback(self, request):
+        code = request.query_params.get("code")
+        if not code:
+            return bad_request("인가 코드(code)가 필요합니다", "code")
 
-        # 권한 가드: 본인만 수정 가능 + superuser 예외
-        if not request.user.is_superuser:
-            req_user_id = getattr(getattr(request, "user", None), "id", None)
-            if req_user_id is not None and req_user_id != user.id:
-                return forbidden("본인만 수정 가능합니다")
+        # 1️⃣ 토큰 교환
+        token_url = "https://kauth.kakao.com/oauth/token"
+        data = {
+            "grant_type": "authorization_code",
+            "client_id": os.environ.get("KAKAO_CLIENT_ID"),
+            "client_secret": os.environ.get("KAKAO_CLIENT_SECRET"),
+            "redirect_uri": os.environ.get("KAKAO_REDIRECT_URI"),
+            "code": code,
+        }
+        token_resp = requests.post(token_url, data=data)
+        if token_resp.status_code != 200:
+            return bad_request("카카오 토큰 교환 실패", "code")
 
-        role = request.data.get("role")
-        if role not in ["artist", "space"]:
-            return bad_request("role must be 'artist' or 'space'", "role")
+        kakao_tokens = token_resp.json()
+        kakao_access_token = kakao_tokens.get("access_token")
+        if not kakao_access_token:
+            return bad_request("access_token 발급 실패", "kakao_access_token")
 
-        user.role = role
-        user.save()
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        # 2️⃣ 유저 정보 조회
+        headers = {"Authorization": f"Bearer {kakao_access_token}"}
+        resp = requests.get("https://kapi.kakao.com/v2/user/me", headers=headers)
+        if resp.status_code != 200:
+            return bad_request("카카오 사용자 정보 조회 실패", "kakao_access_token")
 
-    # POST /api/v1/users/{pk}/info/
-    @action(detail=True, methods=['post'])
-    def info(self, request, pk=None):
-        user = self.get_object()
+        kakao_data = resp.json()
+        kakao_id = kakao_data.get("id")
+        kakao_account = kakao_data.get("kakao_account", {})
+        email = kakao_account.get("email") or f"{kakao_id}@kakao-user.com"
 
-        # 권한 가드: 본인만 수정 가능 + superuser 예외
-        if not request.user.is_superuser:
-            req_user_id = getattr(getattr(request, "user", None), "id", None)
-            if req_user_id is not None and req_user_id != user.id:
-                return forbidden("본인만 수정 가능합니다")
+        # 3️⃣ 유저 생성/조회
+        user, _ = User.objects.get_or_create(
+            kakao_id=kakao_id,
+            defaults={"role": "artist"}  # 기본값 (role은 이후 수정 가능)
+        )
 
-        raw = str(request.data.get("phone_number", "")).strip()
-        if not raw:
-            return bad_request("phone_number is required", "phone_number")
+        # 4️⃣ 장고 토큰 발급
+        token, _ = Token.objects.get_or_create(user=user)
 
-        # 연락처 검증: 숫자만 남기고 010으로 시작하는 11자리
-        digits = "".join(ch for ch in raw if ch.isdigit())
-        if len(digits) != 11 or not digits.startswith("010"):
-            return bad_request("전화번호는 010으로 시작하는 11자리 숫자여야 합니다", "phone_number")
+        return Response(
+            {
+                "accessToken": token.key,
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
-        user.phone_number = digits  # CharField 저장(선행 0 보존)
-        user.save()
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
-
-    # POST /api/v1/users/auth/kakao/login/
-    @action(detail=False, methods=['post'], url_path='auth/kakao/login')
-    def kakao_login(self, request):
-        kakao_id = request.data.get("kakao_id")
-        if not kakao_id:
-            return bad_request("kakao_id is required", "kakao_id")
-
-        # (주의) 서비스 플로우 상: 로그인 → role 선정
-        user, _ = User.objects.get_or_create(kakao_id=kakao_id)
-        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
-
-    # POST /api/v1/users/auth/kakao/logout/
-    @action(detail=False, methods=['post'], url_path='auth/kakao/logout')
+    # ✅ 로그아웃
+    @action(detail=False, methods=["post"], url_path="auth/kakao/logout")
     def kakao_logout(self, request):
-        # 성공 포맷은 자유, 에러만 공통 포맷 적용
-        return Response({"message": "Logged out successfully."}, status=status.HTTP_200_OK)
+        if request.user.is_authenticated:
+            Token.objects.filter(user=request.user).delete()
+        return Response({"message": "Logged out successfully."}, status=200)

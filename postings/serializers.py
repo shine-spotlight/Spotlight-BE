@@ -5,7 +5,6 @@ from spaces.models import Space
 
 
 class PostingSerializer(serializers.ModelSerializer):
-    # write: *_id / *_ids, read: 전개
     space_id = serializers.PrimaryKeyRelatedField(
         queryset=Space.objects.all(), source="space", write_only=True, required=False
     )
@@ -16,22 +15,10 @@ class PostingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Posting
-        fields = [
-            "id",
-            "space",       # read-only FK
-            "space_id",    # write-only
-            "title",
-            "description",
-            "posting_image",
-            "posting_image_url",
-            "categories",   # read
-            "category_ids", # write
-            "price_type",
-            "price_amount",
-            "date",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at", "space", "categories"]
+        fields = ["id","space","space_id","title","description",
+                  "posting_image","posting_image_url","categories","category_ids",
+                  "price_type","price_amount","date","created_at"]
+        read_only_fields = ["id","created_at","space","categories"]
 
     def validate_posting_image_url(self, url):
         if url and not (str(url).startswith("http://") or str(url).startswith("https://")):
@@ -51,4 +38,4 @@ class PostingSerializer(serializers.ModelSerializer):
         return attrs
 
     def get_categories(self, obj):
-        return list(obj.categories.values("id", "name"))
+        return [c.name for c in obj.categories.all()]  # ✅ 문자열만 반환
