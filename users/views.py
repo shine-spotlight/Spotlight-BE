@@ -43,50 +43,69 @@ class UserViewSet(viewsets.ModelViewSet):
             "redirect_uri": os.environ.get("KAKAO_REDIRECT_URI"),
             "code": code,
         }
-        # client_secret은 있을 때만 추가
         kakao_secret = os.environ.get("KAKAO_CLIENT_SECRET")
         if kakao_secret:
             data["client_secret"] = kakao_secret
 
         token_resp = requests.post(token_url, data=data)
-        resp_json = {}
         try:
             resp_json = token_resp.json()
         except Exception:
-            pass
+            resp_json = {"raw": token_resp.text}
+
         print("KAKAO TOKEN RESP:", resp_json)  # 🔎 서버 로그 확인용
 
         if token_resp.status_code != 200:
-            return bad_request("카카오 토큰 교환 실패", "code", extra=resp_json)
+            return Response(
+                {
+                    "detail": "카카오 토큰 교환 실패",
+                    "code": "invalid_param",
+                    "field": "code",
+                    "error": resp_json,  # 카카오 원본 에러 표시
+                },
+                status=token_resp.status_code,
+            )
 
         kakao_access_token = resp_json.get("access_token")
         if not kakao_access_token:
-            return bad_request("access_token 발급 실패", "kakao_access_token", extra=resp_json)
+            return bad_request(
+                "access_token 발급 실패",
+                "kakao_access_token",
+                extra=resp_json,
+            )
 
         # 2️⃣ 유저 정보 조회
         headers = {"Authorization": f"Bearer {kakao_access_token}"}
         resp = requests.get("https://kapi.kakao.com/v2/user/me", headers=headers)
-        user_info = {}
         try:
             user_info = resp.json()
         except Exception:
-            pass
+            user_info = {"raw": resp.text}
+
         print("KAKAO USER INFO:", user_info)  # 🔎 서버 로그 확인용
 
         if resp.status_code != 200:
-            return bad_request("카카오 사용자 정보 조회 실패", "kakao_access_token", extra=user_info)
+            return bad_request(
+                "카카오 사용자 정보 조회 실패",
+                "kakao_access_token",
+                extra=user_info,
+            )
 
         kakao_id = user_info.get("id")
         kakao_account = user_info.get("kakao_account", {})
         email = kakao_account.get("email") or f"{kakao_id}@kakao-user.com"
 
         if not kakao_id:
-            return bad_request("카카오 사용자 ID를 가져올 수 없습니다", "kakao_id", extra=user_info)
+            return bad_request(
+                "카카오 사용자 ID를 가져올 수 없습니다",
+                "kakao_id",
+                extra=user_info,
+            )
 
         # 3️⃣ 유저 생성/조회
         user, _ = User.objects.get_or_create(
-            kakao_id=str(kakao_id),   # 문자열 변환으로 안전하게 저장
-            defaults={"role": ""}     # role은 이후 type 입력 API에서 지정
+            kakao_id=str(kakao_id),
+            defaults={"role": ""},
         )
 
         # 4️⃣ 장고 토큰 발급
