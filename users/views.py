@@ -10,11 +10,11 @@ from .models import User
 from .serializers import UserSerializer
 
 
-def bad_request(detail: str, field: str = "non_field_error"):
-    return Response(
-        {"detail": detail, "code": "invalid_param", "field": field},
-        status=status.HTTP_400_BAD_REQUEST,
-    )
+def bad_request(detail: str, field: str = "non_field_error", extra=None):
+    payload = {"detail": detail, "code": "invalid_param", "field": field}
+    if extra:
+        payload["error"] = extra
+    return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 def forbidden(detail: str, field: str = "user_pk"):
@@ -40,37 +40,53 @@ class UserViewSet(viewsets.ModelViewSet):
         data = {
             "grant_type": "authorization_code",
             "client_id": os.environ.get("KAKAO_CLIENT_ID"),
-            "client_secret": os.environ.get("KAKAO_CLIENT_SECRET"),
             "redirect_uri": os.environ.get("KAKAO_REDIRECT_URI"),
             "code": code,
         }
-        token_resp = requests.post(token_url, data=data)
-        if token_resp.status_code != 200:
-            return bad_request("카카오 토큰 교환 실패", "code")
+        # client_secret은 있을 때만 추가
+        kakao_secret = os.environ.get("KAKAO_CLIENT_SECRET")
+        if kakao_secret:
+            data["client_secret"] = kakao_secret
 
-        kakao_tokens = token_resp.json()
-        kakao_access_token = kakao_tokens.get("access_token")
+        token_resp = requests.post(token_url, data=data)
+        resp_json = {}
+        try:
+            resp_json = token_resp.json()
+        except Exception:
+            pass
+        print("KAKAO TOKEN RESP:", resp_json)  # 🔎 서버 로그 확인용
+
+        if token_resp.status_code != 200:
+            return bad_request("카카오 토큰 교환 실패", "code", extra=resp_json)
+
+        kakao_access_token = resp_json.get("access_token")
         if not kakao_access_token:
-            return bad_request("access_token 발급 실패", "kakao_access_token")
+            return bad_request("access_token 발급 실패", "kakao_access_token", extra=resp_json)
 
         # 2️⃣ 유저 정보 조회
         headers = {"Authorization": f"Bearer {kakao_access_token}"}
         resp = requests.get("https://kapi.kakao.com/v2/user/me", headers=headers)
-        if resp.status_code != 200:
-            return bad_request("카카오 사용자 정보 조회 실패", "kakao_access_token")
+        user_info = {}
+        try:
+            user_info = resp.json()
+        except Exception:
+            pass
+        print("KAKAO USER INFO:", user_info)  # 🔎 서버 로그 확인용
 
-        kakao_data = resp.json()
-        kakao_id = kakao_data.get("id")
-        kakao_account = kakao_data.get("kakao_account", {})
+        if resp.status_code != 200:
+            return bad_request("카카오 사용자 정보 조회 실패", "kakao_access_token", extra=user_info)
+
+        kakao_id = user_info.get("id")
+        kakao_account = user_info.get("kakao_account", {})
         email = kakao_account.get("email") or f"{kakao_id}@kakao-user.com"
 
         if not kakao_id:
-            return bad_request("카카오 사용자 ID를 가져올 수 없습니다", "kakao_id")
+            return bad_request("카카오 사용자 ID를 가져올 수 없습니다", "kakao_id", extra=user_info)
 
         # 3️⃣ 유저 생성/조회
         user, _ = User.objects.get_or_create(
-            kakao_id=kakao_id,
-            defaults={"role": ""}  # role은 이후 type 입력 API에서 지정
+            kakao_id=str(kakao_id),   # 문자열 변환으로 안전하게 저장
+            defaults={"role": ""}     # role은 이후 type 입력 API에서 지정
         )
 
         # 4️⃣ 장고 토큰 발급
