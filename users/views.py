@@ -47,11 +47,14 @@ class UserViewSet(viewsets.ModelViewSet):
         if kakao_secret:
             data["client_secret"] = kakao_secret
 
-        token_resp = requests.post(token_url, data=data)
         try:
+            token_resp = requests.post(token_url, data=data, timeout=5)
             resp_json = token_resp.json()
-        except Exception:
-            resp_json = {"raw": token_resp.text}
+        except Exception as e:
+            return Response(
+                {"detail": "카카오 토큰 요청 실패", "error": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         print("KAKAO TOKEN RESP:", resp_json)  # 🔎 서버 로그 확인용
 
@@ -75,12 +78,15 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         # 2️⃣ 유저 정보 조회
-        headers = {"Authorization": f"Bearer {kakao_access_token}"}
-        resp = requests.get("https://kapi.kakao.com/v2/user/me", headers=headers)
         try:
+            headers = {"Authorization": f"Bearer {kakao_access_token}"}
+            resp = requests.get("https://kapi.kakao.com/v2/user/me", headers=headers, timeout=5)
             user_info = resp.json()
-        except Exception:
-            user_info = {"raw": resp.text}
+        except Exception as e:
+            return Response(
+                {"detail": "카카오 사용자 정보 요청 실패", "error": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         print("KAKAO USER INFO:", user_info)  # 🔎 서버 로그 확인용
 
