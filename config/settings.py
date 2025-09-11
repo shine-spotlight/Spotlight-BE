@@ -3,12 +3,23 @@ Django settings for config project.
 """
 
 from pathlib import Path
+import dj_database_url
+import os
+import environ
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-k7041yzfj=n@kcws-p)k5s(ud(9&=e#tx15jjg28db*6ncs=em"
-DEBUG = True
-ALLOWED_HOSTS = ["*"]  # ✅ 배포 환경에선 도메인만 지정하는 게 안전함
+# 환경변수 로더 초기화
+env = environ.Env(
+    DEBUG=(bool, False)
+)
+# .env 파일 읽기 (로컬 개발 환경에서만)
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+SECRET_KEY = env("SECRET_KEY")
+DEBUG = env("DEBUG")
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
 
 # Application definition
@@ -47,6 +58,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",   # ✅ 맨 위쪽에 배치 권장
+    "whitenoise.middleware.WhiteNoiseMiddleware", 
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -78,10 +90,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Database
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": dj_database_url.parse(
+        os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
+    )
 }
 
 
@@ -102,7 +113,10 @@ USE_TZ = True
 
 
 # Static files
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Whitenoise 압축/캐싱 모드
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
