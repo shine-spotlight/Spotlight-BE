@@ -26,6 +26,7 @@ INSTALLED_APPS = [
 
     # ✅ CORS 허용
     "corsheaders",
+    "drf_yasg",
 
     # custom apps
     "users",
@@ -123,3 +124,15 @@ CORS_ALLOW_ALL_ORIGINS = True   # 개발 단계에선 전체 허용
 #     "http://localhost:3000",
 #     "https://spotlight-fe.vercel.app",
 # ]
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": {
+        "Token": {
+            "type": "apiKey",
+            "name": "Authorization",   # 헤더명
+            "in": "header",
+            "description": "예: Token 123abc456def...",
+        }
+    },
+    # 필요 시 기본 보안 적용
+    "DEFAULT_INFO": "config.urls.schema_info",
+}
