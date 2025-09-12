@@ -5,7 +5,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User
 from .serializers import UserSerializer
 
@@ -27,9 +27,14 @@ def forbidden(detail: str, field: str = "user_pk"):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
 
-    # ✅ 카카오 로그인 콜백 (인가 코드 → access_token → 유저 인증)
+    # ✅ 액션별 권한 제어
+    def get_permissions(self):
+        if self.action in ["kakao_callback"]:  # 로그인 콜백은 누구나 가능
+            return [AllowAny()]
+        return [IsAuthenticated()]  # 나머지는 토큰 필요
+
+    # ✅ 카카오 로그인 콜백
     @action(detail=False, methods=["get"], url_path="auth/kakao/callback")
     def kakao_callback(self, request):
         code = request.query_params.get("code")
@@ -56,8 +61,6 @@ class UserViewSet(viewsets.ModelViewSet):
                 {"detail": "카카오 토큰 요청 실패", "error": str(e)},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-
-        print("KAKAO TOKEN RESP:", resp_json)
 
         if token_resp.status_code != 200:
             return Response(
@@ -89,8 +92,6 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        print("KAKAO USER INFO:", user_info)
-
         if resp.status_code != 200:
             return bad_request(
                 "카카오 사용자 정보 조회 실패",
@@ -101,6 +102,7 @@ class UserViewSet(viewsets.ModelViewSet):
         kakao_id = user_info.get("id")
         kakao_account = user_info.get("kakao_account", {})
         email = kakao_account.get("email") or f"{kakao_id}@kakao-user.com"
+        phone_number = kakao_account.get("phone_number")  # ✅ 전화번호 추출
 
         if not kakao_id:
             return bad_request(
@@ -111,10 +113,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
         # 3️⃣ 유저 생성/조회
         try:
-            user, _ = User.objects.get_or_create(
+            user, created = User.objects.get_or_create(
                 kakao_id=str(kakao_id),
-                defaults={"role": None, "is_active": True, "is_staff": False},
+                defaults={
+                    "role": None,
+                    "is_active": True,
+                    "is_staff": False,
+                    "phone_number": phone_number,
+                },
             )
+            if not created and not user.phone_number and phone_number:
+                user.phone_number = phone_number
+                user.save()
         except Exception as e:
             return Response(
                 {"detail": "유저 생성 실패", "error": str(e)},
@@ -147,26 +157,43 @@ class UserViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    # ✅ 로그아웃
+    # ✅ 로그아웃 (토큰 필요)
     @action(detail=False, methods=["post"], url_path="auth/kakao/logout")
     def kakao_logout(self, request):
         if request.user.is_authenticated:
             Token.objects.filter(user=request.user).delete()
         return Response({"message": "Logged out successfully."}, status=200)
 
-    # ✅ 유저 role 설정 (artist / space)
-    @action(detail=True, methods=["post"], url_path="type")
-    def set_role(self, request, pk=None):
-    
-        user = self.get_object()
-        if request.user != user:
-            return forbidden("본인만 role을 변경할 수 있습니다", "user_pk")
+    # ✅ 유저 role 설정 (토큰으로만 본인 처리)
+    @action(detail=False, methods=["post"], url_path="type")
+    def set_role(self, request):
+        user = request.user
         role = request.data.get("role")
 
         if role not in ["artist", "space"]:
             return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
 
         user.role = role
+        user.save()
+
+        return Response({
+            "id": user.id,
+            "kakao_id": user.kakao_id,
+            "role": user.role,
+            "phone_number": user.phone_number,
+            "created_at": user.created_at,
+        })
+
+    # ✅ 유저 전화번호 수정 (토큰으로만 본인 처리)
+    @action(detail=False, methods=["post"], url_path="phone")
+    def set_phone(self, request):
+        user = request.user
+        phone_number = request.data.get("phone_number")
+
+        if not phone_number:
+            return bad_request("phone_number는 필수 입력값입니다.", "phone_number")
+
+        user.phone_number = phone_number
         user.save()
 
         return Response({
