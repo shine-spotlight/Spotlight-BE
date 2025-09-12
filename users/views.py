@@ -112,7 +112,7 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             user, _ = User.objects.get_or_create(
                 kakao_id=str(kakao_id),
-                defaults={"role": None , "is_active": True, "is_staff": False },
+                defaults={"role": None, "is_active": True, "is_staff": False},
             )
         except Exception as e:
             return Response(
@@ -152,3 +152,23 @@ class UserViewSet(viewsets.ModelViewSet):
         if request.user.is_authenticated:
             Token.objects.filter(user=request.user).delete()
         return Response({"message": "Logged out successfully."}, status=200)
+
+    # ✅ 유저 role 설정 (artist / space)
+    @action(detail=True, methods=["post"], url_path="type")
+    def set_role(self, request, pk=None):
+        user = self.get_object()
+        role = request.data.get("role")
+
+        if role not in ["artist", "space"]:
+            return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
+
+        user.role = role
+        user.save()
+
+        return Response({
+            "id": user.id,
+            "kakao_id": user.kakao_id,
+            "role": user.role,
+            "phone_number": user.phone_number,
+            "created_at": user.created_at,
+        })
