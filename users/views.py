@@ -112,7 +112,7 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             user, _ = User.objects.get_or_create(
                 kakao_id=str(kakao_id),
-                defaults={"role": None},
+                defaults={"role": None , "is_active": True, "is_staff": False },
             )
         except Exception as e:
             return Response(
