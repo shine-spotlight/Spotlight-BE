@@ -156,7 +156,10 @@ class UserViewSet(viewsets.ModelViewSet):
     # ✅ 유저 role 설정 (artist / space)
     @action(detail=True, methods=["post"], url_path="type")
     def set_role(self, request, pk=None):
+    
         user = self.get_object()
+        if request.user != user:
+            return forbidden("본인만 role을 변경할 수 있습니다", "user_pk")
         role = request.data.get("role")
 
         if role not in ["artist", "space"]:
