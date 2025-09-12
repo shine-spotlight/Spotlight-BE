@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 from rest_framework import permissions
-
+from rest_framework.authtoken import views
 # Swagger / drf-yasg
 from drf_yasg import openapi
 from drf_yasg.views import get_schema_view
@@ -63,6 +63,7 @@ router.register(r'admin', AdminViewSet, basename='admin')
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", include(router.urls)),
+    path("api-token-auth/", views.obtain_auth_token),
 
     # Swagger 항상 노출
     re_path(
