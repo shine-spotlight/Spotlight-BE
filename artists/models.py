@@ -23,7 +23,7 @@ class Artist(models.Model):
         blank=True,
     )
 
-    # 프로필
+    # 프로필11
     portfolio_links = models.JSONField(default=list, blank=True)
     profile_image = models.ImageField(upload_to="artists/profile/", blank=True, null=True)
     profile_image_url = models.URLField(blank=True, null=True)
