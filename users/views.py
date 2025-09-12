@@ -27,6 +27,7 @@ def forbidden(detail: str, field: str = "user_pk"):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
 
     # ✅ 카카오 로그인 콜백 (인가 코드 → access_token → 유저 인증)
     @action(detail=False, methods=["get"], url_path="auth/kakao/callback")
