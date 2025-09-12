@@ -9,6 +9,8 @@ from artistequipments.models import ArtistEquipment
 from .serializers import ArtistSerializer
 from equipmentcategories.models import EquipmentCategory
 from users.permissions import IsOwnerOrReadOnlyWithAdminPass
+from rest_framework.exceptions import ValidationError
+
 
 
 # 에러 포맷 통일
@@ -39,6 +41,10 @@ class ArtistViewSet(viewsets.ModelViewSet):
     queryset = Artist.objects.all()
     serializer_class = ArtistSerializer
     # permission_classes = [IsOwnerOrReadOnlyWithAdminPass]
+    def perform_create(self, serializer):
+        if Artist.objects.filter(user=self.request.user).exists():
+            raise ValidationError({"detail": "이미 아티스트 프로필이 있습니다.", "field": "user"})
+        serializer.save(user=self.request.user)
 
     # 권한 가드
     def _guard_owner(self, request, artist):

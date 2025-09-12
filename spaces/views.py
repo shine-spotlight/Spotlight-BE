@@ -9,6 +9,8 @@ from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
 
+from rest_framework.exceptions import ValidationError
+
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -36,6 +38,13 @@ def _norm_name(name: str) -> str:
 class SpaceViewSet(viewsets.ModelViewSet):
     queryset = Space.objects.all()
     serializer_class = SpaceSerializer
+    # permission_classes = [IsOwnerOrReadOnlyWithAdminPass]
+    # 여기다가 추가 👇
+    def perform_create(self, serializer):
+        if Space.objects.filter(user=self.request.user).exists():
+            raise ValidationError({"detail": "이미 공간 프로필이 있습니다.", "field": "user"})
+        serializer.save(user=self.request.user)
+
 
     # 권한 가드
     def _guard_owner(self, request, space):

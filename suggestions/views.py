@@ -2,14 +2,16 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from .models import Suggestion
 from .serializers import SuggestionSerializer
 from artists.models import Artist
 from spaces.models import Space
-from notifications.models import Notification   # ✅ 추가
+from notifications.models import Notification
 
 
+# 공통 에러 포맷
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
     if field:
@@ -25,171 +27,329 @@ def forbidden(detail: str, field: str = ""):
 
 
 class SuggestionViewSet(viewsets.ModelViewSet):
+    """
+    개선 사항:
+    - sender는 토큰(request.user)에서 자동 매핑
+      • request.user.role == "artist"  → sender_type = artist, sender = 내 Artist 프로필
+      • request.user.role == "space"   → sender_type = space,  sender = 내 Space 프로필
+    - 프론트는 receiver만 전달 (artist 또는 space 중 하나 + message)
+    - 받은함/보낸함 조회는 기본적으로 토큰 사용자 기준 (관리자는 쿼리로 특정 대상 조회 허용)
+    """
     queryset = Suggestion.objects.all().order_by("-created_at")
     serializer_class = SuggestionSerializer
+    permission_classes = [IsAuthenticated]
 
-    @action(detail=True, methods=["post"])
-    def read(self, request, pk=None):
-        """제안서 읽음 처리"""
-        suggestion = self.get_object()
-        suggestion.is_read = True
-        suggestion.save()
-        return Response({"detail": "읽음 처리 완료", "is_read": suggestion.is_read}, status=status.HTTP_200_OK)
-
-    # 생성 가드
-    def _guard_sender(self, request, sender_type, artist: Artist, space: Space):
-        if request.user.is_superuser:
+    # ----- 내부 유틸 -----
+    def _get_my_artist(self, user):
+        try:
+            return Artist.objects.get(user=user)
+        except Artist.DoesNotExist:
             return None
-        if not request.user.is_authenticated:
-            return forbidden("인증 필요")
-        if sender_type == Suggestion.SENDER_ARTIST:
-            if request.user.id != artist.user_id:
-                return forbidden("본인 아티스트 프로필로만 제안할 수 있습니다.", "artist_id")
-        elif sender_type == Suggestion.SENDER_SPACE:
-            if request.user.id != space.user_id:
-                return forbidden("본인 공간 프로필로만 제안할 수 있습니다.", "space_id")
-        return None
 
+    def _get_my_space(self, user):
+        try:
+            return Space.objects.get(user=user)
+        except Space.DoesNotExist:
+            return None
+
+    def _receiver_from_body(self, data: dict):
+        """
+        body에서 receiver를 결정 (artist 또는 space 중 정확히 하나만 허용)
+        반환: ("artist", Artist) or ("space", Space) or (None, None, 에러응답)
+        """
+        artist_id = data.get("artist")
+        space_id  = data.get("space")
+
+        if artist_id and space_id:
+            return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
+
+        if not artist_id and not space_id:
+            return None, None, bad_request("receiver가 없습니다. artist 또는 space 중 하나는 필수입니다.", "receiver")
+
+        if artist_id:
+            try:
+                artist = Artist.objects.get(pk=artist_id)
+            except Artist.DoesNotExist:
+                return None, None, bad_request("존재하지 않는 artist 입니다.", "artist")
+            return "artist", artist, None
+
+        if space_id:
+            try:
+                space = Space.objects.get(pk=space_id)
+            except Space.DoesNotExist:
+                return None, None, bad_request("존재하지 않는 space 입니다.", "space")
+            return "space", space, None
+
+        # 방어적
+        return None, None, bad_request("receiver를 판별할 수 없습니다.", "receiver")
+
+    def _notify(self, user, content, target_link):
+        Notification.objects.create(
+            user=user,
+            content=content,
+            target_link=target_link  # 예: "/api/v1/suggestions/123/"
+        )
+
+    # ----- 생성 -----
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
-        ser = self.get_serializer(data=request.data, context={"request": request})
+        """
+        sender 자동 매핑:
+          - user.role == "artist" → 내 Artist 프로필을 sender로 설정, body에는 space(수신자)만 필요
+          - user.role == "space"  → 내 Space  프로필을 sender로 설정, body에는 artist(수신자)만 필요
+        body 예:
+          (아티스트 → 공간) { "space": 1, "message": "공연 제안합니다" }
+          (공간 → 아티스트) { "artist": 2, "message": "제안드립니다" }
+        """
+        user = request.user
+        role = getattr(user, "role", None)
+        if role not in ("artist", "space"):
+            return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
+
+        receiver_kind, receiver_obj, err = self._receiver_from_body(request.data)
+        if err:
+            return err
+
+        data = request.data.copy()
+
+        if role == "artist":
+            my_artist = self._get_my_artist(user)
+            if not my_artist:
+                return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
+            # 보낼 수 있는 대상은 공간만
+            if receiver_kind != "space":
+                return bad_request("아티스트는 공간에게만 제안할 수 있습니다.", "space")
+            # sender 자동 세팅
+            data["sender_type"] = Suggestion.SENDER_ARTIST
+            data["artist"] = my_artist.id
+            data["space"] = receiver_obj.id
+
+        else:  # role == "space"
+            my_space = self._get_my_space(user)
+            if not my_space:
+                return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
+            # 보낼 수 있는 대상은 아티스트만
+            if receiver_kind != "artist":
+                return bad_request("공간은 아티스트에게만 제안할 수 있습니다.", "artist")
+            # sender 자동 세팅
+            data["sender_type"] = Suggestion.SENDER_SPACE
+            data["space"] = my_space.id
+            data["artist"] = receiver_obj.id
+
+        # 자기 자신에게 보내는 케이스 방지
+        if role == "artist" and my_artist.user_id == receiver_obj.user_id:
+            return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+        if role == "space" and my_space.user_id == receiver_obj.user_id:
+            return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+
+        ser = self.get_serializer(data=data, context={"request": request})
         if not ser.is_valid():
             return bad_request(str(ser.errors))
 
-        sender_type = ser.validated_data["sender_type"]
-        artist = ser.validated_data["artist"]
-        space = ser.validated_data["space"]
+        instance: Suggestion = ser.save()
 
-        guard = self._guard_sender(request, sender_type, artist, space)
-        if guard:
-            return guard
-
-        instance = ser.save()
-
-        # ✅ 알림 생성: 제안 수신자에게 알림 발송
-        if sender_type == Suggestion.SENDER_ARTIST:
-            target_user = space.user
-            msg = f"{artist.name} 아티스트가 {space.place_name} 공간에 제안을 보냈습니다."
-            link = f"http://127.0.0.1:8000/api/v1/suggestions/{instance.id}/"
+        # 알림 (수신자에게)
+        if instance.sender_type == Suggestion.SENDER_ARTIST:
+            # 아티스트 → 공간
+            target_user = instance.space.user
+            msg = f"{instance.artist.name} 아티스트가 {instance.space.place_name} 공간에 제안을 보냈습니다."
         else:
-            target_user = artist.user
-            msg = f"{space.place_name} 공간이 {artist.name} 아티스트에게 제안을 보냈습니다."
-            link = f"http://127.0.0.1:8000/api/v1/suggestions/{instance.id}/"
+            # 공간 → 아티스트
+            target_user = instance.artist.user
+            msg = f"{instance.space.place_name} 공간이 {instance.artist.name} 아티스트에게 제안을 보냈습니다."
 
-        Notification.objects.create(
+        self._notify(
             user=target_user,
             content=msg,
-            target_link=link
+            target_link=f"/api/v1/suggestions/{instance.id}/"
         )
 
-        out = self.get_serializer(instance, context={"request": request}).data
-        return Response(out, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["get"])
+    # ----- 읽음 처리 -----
+    @action(detail=True, methods=["post"], url_path="read")
+    @transaction.atomic
+    def read(self, request, pk=None):
+        """
+        제안서 '읽음' 처리. 제안 수신자만 가능.
+        """
+        sugg: Suggestion = self.get_object()
+        # 수신자 판별
+        receiver_user_id = (
+            sugg.space.user_id if sugg.sender_type == Suggestion.SENDER_ARTIST else sugg.artist.user_id
+        )
+        if not request.user.is_superuser and request.user.id != receiver_user_id:
+            return forbidden("제안 수신자만 읽음 처리할 수 있습니다.", "read")
+
+        if not sugg.is_read:
+            sugg.is_read = True
+            sugg.save(update_fields=["is_read", "updated_at"])
+
+        return Response({"id": sugg.id, "is_read": True}, status=200)
+
+    # ----- 받은함 -----
+    @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
+        """
+        기본: 토큰 사용자 기준 받은 제안함을 반환.
+        관리자만 receiver_type/receiver_id로 특정 대상의 받은함 조회 허용.
+          - ?receiver_type=artist|space&receiver_id=<pk>
+        """
+        user = request.user
+        qs = self.queryset
+
         r_type = request.query_params.get("receiver_type")
         r_id = request.query_params.get("receiver_id")
-        if r_type not in (Suggestion.SENDER_ARTIST, Suggestion.SENDER_SPACE) or not r_id:
-            return bad_request("receiver_type('artist'|'space')와 receiver_id는 필수입니다.", "receiver")
 
-        if r_type == Suggestion.SENDER_ARTIST:
-            try:
-                artist = Artist.objects.get(pk=r_id)
-            except Artist.DoesNotExist:
-                return bad_request("존재하지 않는 artist_id 입니다.", "receiver_id")
-            if not request.user.is_superuser and request.user.id != artist.user_id:
-                return forbidden("본인 아티스트 제안함만 조회할 수 있습니다.", "receiver_id")
-            qs = self.queryset.filter(artist=artist)
+        if user.is_superuser and r_type in ("artist", "space") and r_id:
+            # 관리자는 임의 조회 가능
+            if r_type == "artist":
+                try:
+                    artist = Artist.objects.get(pk=r_id)
+                except Artist.DoesNotExist:
+                    return bad_request("존재하지 않는 artist 입니다.", "receiver_id")
+                qs = qs.filter(artist=artist)
+            else:
+                try:
+                    space = Space.objects.get(pk=r_id)
+                except Space.DoesNotExist:
+                    return bad_request("존재하지 않는 space 입니다.", "receiver_id")
+                qs = qs.filter(space=space)
         else:
-            try:
-                space = Space.objects.get(pk=r_id)
-            except Space.DoesNotExist:
-                return bad_request("존재하지 않는 space_id 입니다.", "receiver_id")
-            if not request.user.is_superuser and request.user.id != space.user_id:
-                return forbidden("본인 공간 제안함만 조회할 수 있습니다.", "receiver_id")
-            qs = self.queryset.filter(space=space)
+            # 일반 사용자는 자신의 프로필 기준만
+            role = getattr(user, "role", None)
+            if role == "artist":
+                my_artist = self._get_my_artist(user)
+                if not my_artist:
+                    return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
+                qs = qs.filter(artist=my_artist)
+            elif role == "space":
+                my_space = self._get_my_space(user)
+                if not my_space:
+                    return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
+                qs = qs.filter(space=my_space)
+            else:
+                return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
 
         page = self.paginate_queryset(qs.order_by("-created_at"))
-        ser = self.get_serializer(page or qs, many=True, context={"request": request})
+        ser = self.get_serializer(page or qs, many=True)
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
 
-    @action(detail=False, methods=["get"])
+    # ----- 보낸함 -----
+    @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
+        """
+        기본: 토큰 사용자 기준 보낸 제안함을 반환.
+        관리자만 sender_type/sender_id로 특정 발신자의 보낸함 조회 허용.
+          - ?sender_type=artist|space&sender_id=<pk>
+        """
+        user = request.user
+        qs = self.queryset
+
         s_type = request.query_params.get("sender_type")
         s_id = request.query_params.get("sender_id")
-        if s_type not in (Suggestion.SENDER_ARTIST, Suggestion.SENDER_SPACE) or not s_id:
-            return bad_request("sender_type('artist'|'space')와 sender_id는 필수입니다.", "sender")
 
-        if s_type == Suggestion.SENDER_ARTIST:
-            try:
-                artist = Artist.objects.get(pk=s_id)
-            except Artist.DoesNotExist:
-                return bad_request("존재하지 않는 artist_id 입니다.", "sender_id")
-            if not request.user.is_superuser and request.user.id != artist.user_id:
-                return forbidden("본인 아티스트 발신함만 조회할 수 있습니다.", "sender_id")
-            qs = self.queryset.filter(sender_type=Suggestion.SENDER_ARTIST, artist=artist)
+        if user.is_superuser and s_type in ("artist", "space") and s_id:
+            if s_type == "artist":
+                try:
+                    artist = Artist.objects.get(pk=s_id)
+                except Artist.DoesNotExist:
+                    return bad_request("존재하지 않는 artist 입니다.", "sender_id")
+                qs = qs.filter(sender_type=Suggestion.SENDER_ARTIST, artist=artist)
+            else:
+                try:
+                    space = Space.objects.get(pk=s_id)
+                except Space.DoesNotExist:
+                    return bad_request("존재하지 않는 space 입니다.", "sender_id")
+                qs = qs.filter(sender_type=Suggestion.SENDER_SPACE, space=space)
         else:
-            try:
-                space = Space.objects.get(pk=s_id)
-            except Space.DoesNotExist:
-                return bad_request("존재하지 않는 space_id 입니다.", "sender_id")
-            if not request.user.is_superuser and request.user.id != space.user_id:
-                return forbidden("본인 공간 발신함만 조회할 수 있습니다.", "sender_id")
-            qs = self.queryset.filter(sender_type=Suggestion.SENDER_SPACE, space=space)
+            role = getattr(user, "role", None)
+            if role == "artist":
+                my_artist = self._get_my_artist(user)
+                if not my_artist:
+                    return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
+                qs = qs.filter(sender_type=Suggestion.SENDER_ARTIST, artist=my_artist)
+            elif role == "space":
+                my_space = self._get_my_space(user)
+                if not my_space:
+                    return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
+                qs = qs.filter(sender_type=Suggestion.SENDER_SPACE, space=my_space)
+            else:
+                return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
 
         page = self.paginate_queryset(qs.order_by("-created_at"))
-        ser = self.get_serializer(page or qs, many=True, context={"request": request})
+        ser = self.get_serializer(page or qs, many=True)
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
 
-    @action(detail=True, methods=["patch"])
+    # ----- 수락 처리 -----
+    @action(detail=True, methods=["patch"], url_path="accept")
     @transaction.atomic
     def accept(self, request, pk=None):
+        """
+        제안 수신자만 수락 가능.
+        수락 시 상대에게 알림 발송.
+        """
         sugg: Suggestion = self.get_object()
-        receiver_user_id = sugg.space.user_id if sugg.sender_type == Suggestion.SENDER_ARTIST else sugg.artist.user_id
+        receiver_user_id = (
+            sugg.space.user_id if sugg.sender_type == Suggestion.SENDER_ARTIST else sugg.artist.user_id
+        )
         if not request.user.is_superuser and request.user.id != receiver_user_id:
             return forbidden("제안 수신자만 수락할 수 있습니다.", "accept")
 
-        sugg.is_accepted = True
-        sugg.save(update_fields=["is_accepted", "updated_at"])
+        if sugg.is_accepted is not True:
+            sugg.is_accepted = True
+            sugg.save(update_fields=["is_accepted", "updated_at"])
 
-        # ✅ 알림 생성
-        target_user = sugg.artist.user if sugg.sender_type == Suggestion.SENDER_SPACE else sugg.space.user
-        Notification.objects.create(
-            user=target_user,
-            content=f"'{sugg}' 제안이 수락되었습니다.",
-            target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{sugg.id}/"
-        )
+            # 상대에게 알림
+            target_user = sugg.artist.user if sugg.sender_type == Suggestion.SENDER_SPACE else sugg.space.user
+            self._notify(
+                user=target_user,
+                content=f"'{sugg}' 제안이 수락되었습니다.",
+                target_link=f"/api/v1/suggestions/{sugg.id}/"
+            )
 
-        data = self.get_serializer(sugg, context={"request": request}).data
-        return Response(data, status=200)
+        return Response(self.get_serializer(sugg).data, status=200)
 
-    @action(detail=True, methods=["patch"])
+    # ----- 상태 변경(관리자) -----
+    @action(detail=True, methods=["patch"], url_path="status")
     @transaction.atomic
     def status(self, request, pk=None):
+        """
+        관리자만 임의 상태 변경 (is_accepted: true/false/null)
+        """
         if not request.user.is_superuser:
             return forbidden("관리자만 변경할 수 있습니다.", "status")
 
         sugg: Suggestion = self.get_object()
         val = request.data.get("is_accepted", None)
-        if val not in (True, False, None, "true", "false", "null"):
-            return bad_request("is_accepted는 true/false/null 이어야 합니다.", "is_accepted")
 
+        # 문자열도 허용
         if isinstance(val, str):
-            val = {"true": True, "false": False, "null": None}.get(val.lower(), None)
+            lowered = val.lower()
+            if lowered == "true":
+                val = True
+            elif lowered == "false":
+                val = False
+            elif lowered in ("null", "none", ""):
+                val = None
+
+        if val not in (True, False, None):
+            return bad_request("is_accepted는 true/false/null 이어야 합니다.", "is_accepted")
 
         sugg.is_accepted = val
         sugg.save(update_fields=["is_accepted", "updated_at"])
 
-        # ✅ 알림 생성
+        # 수락으로 바뀐 경우 상대에게 알림
         if val is True:
             target_user = sugg.artist.user if sugg.sender_type == Suggestion.SENDER_SPACE else sugg.space.user
-            Notification.objects.create(
+            self._notify(
                 user=target_user,
                 content=f"관리자에 의해 '{sugg}' 제안이 수락 처리되었습니다.",
-                target_link=f"http://127.0.0.1:8000/api/v1/suggestions/{sugg.id}/"
+                target_link=f"/api/v1/suggestions/{sugg.id}/"
             )
 
-        return Response(self.get_serializer(sugg, context={"request": request}).data, status=200)
+        return Response(self.get_serializer(sugg).data, status=200)

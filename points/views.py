@@ -6,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 
 from .models import PointTransaction
 from .serializers import PointTransactionSerializer
-from users.models import User
 
 
 def bad_request(detail: str, field: str = ""):
@@ -55,21 +54,13 @@ class PointViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="charge")
     @transaction.atomic
     def charge(self, request):
-        user_id = request.data.get("user")
         amount = request.data.get("amount")
 
-        if not user_id:
-            return bad_request("user는 필수입니다.", "user")
         if not amount:
             return bad_request("amount는 필수입니다.", "amount")
 
-        try:
-            user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            return bad_request("존재하지 않는 user_id 입니다.", "user")
-
         tx = PointTransaction.objects.create(
-            user=user,
+            user=request.user,
             amount=int(amount),
             transaction_type="charge"
         )
@@ -78,28 +69,19 @@ class PointViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="deduct")
     @transaction.atomic
     def deduct(self, request):
-        user_id = request.data.get("user")
         amount = request.data.get("amount")
 
-        if not user_id:
-            return bad_request("user는 필수입니다.", "user")
         if not amount:
             return bad_request("amount는 필수입니다.", "amount")
 
-        try:
-            user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            return bad_request("존재하지 않는 user_id 입니다.", "user")
-
-        # 현재 잔액 확인
-        qs = PointTransaction.objects.filter(user=user).order_by("-created_at")
+        qs = PointTransaction.objects.filter(user=request.user).order_by("-created_at")
         balance = sum([tx.amount if tx.transaction_type == "charge" else -tx.amount for tx in qs])
 
         if balance < int(amount):
             return bad_request("잔액 부족으로 차감할 수 없습니다.", "amount")
 
         tx = PointTransaction.objects.create(
-            user=user,
+            user=request.user,
             amount=int(amount),
             transaction_type="deduct"
         )
