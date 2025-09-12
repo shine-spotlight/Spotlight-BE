@@ -49,6 +49,8 @@ class UserViewSet(viewsets.ModelViewSet):
             "redirect_uri": os.environ.get("KAKAO_REDIRECT_URI"),
             "code": code,
         }
+        print("KAKAO_CLIENT_ID", os.environ.get("KAKAO_CLIENT_ID"))
+        print("KAKAO_REDIRECT_URI", os.environ.get("KAKAO_REDIRECT_URI"))
         kakao_secret = os.environ.get("KAKAO_CLIENT_SECRET")
         if kakao_secret:
             data["client_secret"] = kakao_secret
