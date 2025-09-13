@@ -32,18 +32,18 @@ class SuggestionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "artist", "space", "receiver_phone", "created_at", "updated_at"]
+        read_only_fields = ["id", "sender_type", "artist", "space", "receiver_phone", "created_at", "updated_at"]
 
     def validate(self, attrs):
         sender_type = attrs.get("sender_type") or getattr(self.instance, "sender_type", None)
         artist = attrs.get("artist") or getattr(self.instance, "artist", None)
         space = attrs.get("space") or getattr(self.instance, "space", None)
 
-        if sender_type not in (Suggestion.SENDER_ARTIST, Suggestion.SENDER_SPACE):
+        if sender_type not in (Suggestion.SENDER_ARTIST, Suggestion.SENDER_SPACE, None):
             raise serializers.ValidationError({"sender_type": "sender_type는 'artist' 또는 'space'여야 합니다."})
 
         # 양쪽 FK 필수
-        if not artist or not space:
+        if not artist and not space:
             raise serializers.ValidationError({"detail": "artist_id와 space_id는 모두 필요합니다."})
 
         # 조건부 필드 허용 범위
