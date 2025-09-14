@@ -52,17 +52,19 @@ class SuggestionSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
+        # 조회/리스트 등에서는 validate를 건너뜀
+        request = self.context.get("request", None)
+        if request and request.method not in ("POST", "PUT", "PATCH"):
+            return attrs
+
         artist = attrs.get("artist", None)
         space = attrs.get("space", None)
 
-        # 동시에 들어오면 막기
+        # 둘 다 없으면 에러 (둘 다 있으면 정상)
         if not artist or not space:
             raise serializers.ValidationError(
-                {"detail": "artist와 space중 하나는 json에 입력되어야 합니다."}
+                {"detail": "artist와 space 모두 필요합니다."}
             )
-
-        # 여기서는 "하나도 없으면 안 된다" 체크 제거
-        # SuggestionViewSet.create()에서 role 기반으로 채워줌
 
         # 메시지 필수
         message = attrs.get("message", "").strip()
