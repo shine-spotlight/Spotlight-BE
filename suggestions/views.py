@@ -34,7 +34,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         operation_description="내 artist/space 프로필 기준으로 받은 제안만 반환합니다.",
         tags=["Suggestion"]
     )
-    @action(detail=False, methods=["get"], url_path="received", tags=["Suggestion"])
+    @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
         user = request.user
         role = getattr(user, "role", None)
@@ -62,7 +62,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         operation_description="내 artist/space 프로필 기준으로 보낸 제안만 반환합니다.",
         tags=["Suggestion"]
     )
-    @action(detail=False, methods=["get"], url_path="sent", tags=["Suggestion"])
+    @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
         user = request.user
         role = getattr(user, "role", None)
@@ -235,7 +235,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         },
         tags=["Suggestion"]
     )
-    @action(detail=True, methods=["patch"], url_path="accept", tags=["Suggestion"])
+    @action(detail=True, methods=["patch"], url_path="accept")
     @transaction.atomic
     def accept(self, request, pk=None):
         """
@@ -295,7 +295,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         },
         tags=["Suggestion"]
     )
-    @action(detail=True, methods=["post"], url_path="read", tags=["Suggestion"])
+    @action(detail=True, methods=["post"], url_path="read")
     @transaction.atomic
     def read(self, request, pk=None):
         """
