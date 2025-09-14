@@ -3,7 +3,7 @@ from django.db import models
 from users.models import User
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
-from .models import SpaceCategory  # (X) 자기 자신을 import하면 안 됨!
+#from .models import SpaceCategory  # (X) 자기 자신을 import하면 안 됨!
 
 class SpaceCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
