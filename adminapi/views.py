@@ -2,6 +2,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from django.db import transaction
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import F
@@ -213,3 +214,54 @@ class AdminViewSet(viewsets.ViewSet):
             target_link=target_link
         )
         return Response(NotificationSerializer(notif).data, status=201)
+    
+    # 제안 상태 변경 (관리자)
+    @swagger_auto_schema(
+        operation_summary="제안 상태 변경(관리자)",
+        operation_description="관리자가 임의로 제안의 상태(is_accepted)를 변경합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'is_accepted': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="수락 여부(true/false/null)")
+            },
+            required=['is_accepted']
+        ),
+        responses={200: 'SuggestionSerializer', 403: "권한 없음", 400: "유효성 오류"},
+        tags=["Admin"]
+    )
+    @action(detail=True, methods=["patch"], url_path="suggestions/(?P<suggestion_pk>[^/.]+)/status")
+    @transaction.atomic
+    def suggestion_status(self, request, suggestion_pk=None):
+        from suggestions.models import Suggestion
+        from suggestions.serializers import SuggestionSerializer
+        from notifications.models import Notification
+        guard = self._check_admin(request)
+        if guard:
+            return guard
+        try:
+            sugg = Suggestion.objects.get(pk=suggestion_pk)
+        except Suggestion.DoesNotExist:
+            return Response({"detail": "존재하지 않는 제안입니다."}, status=404)
+        val = request.data.get("is_accepted", None)
+        # 문자열도 허용
+        if isinstance(val, str):
+            lowered = val.lower()
+            if lowered == "true":
+                val = True
+            elif lowered == "false":
+                val = False
+            elif lowered in ("null", "none", ""):
+                val = None
+        if val not in (True, False, None):
+            return Response({"detail": "is_accepted는 true/false/null 이어야 합니다.", "field": "is_accepted"}, status=400)
+        sugg.is_accepted = val
+        sugg.save(update_fields=["is_accepted", "updated_at"])
+        # 수락으로 바뀐 경우 상대에게 알림
+        if val is True:
+            target_user = sugg.artist.user if sugg.sender_type == Suggestion.SENDER_SPACE else sugg.space.user
+            Notification.objects.create(
+                user=target_user,
+                content=f"관리자에 의해 '{sugg}' 제안이 수락 처리되었습니다.",
+                target_link=f"/api/v1/suggestions/{sugg.id}/"
+            )
+        return Response(SuggestionSerializer(sugg).data, status=200)
