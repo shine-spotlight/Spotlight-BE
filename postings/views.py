@@ -10,6 +10,8 @@ from .models import Posting
 from .serializers import PostingSerializer
 from suggestions.models import Suggestion
 from artists.models import Artist
+from rest_framework.permissions import IsAuthenticated
+
 
 
 def bad_request(detail: str, field: str):
@@ -167,7 +169,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         responses={201: openapi.Response(description="제안 생성 결과", examples={"application/json": {"suggestion_id": 1, "created": True}}), 400: "유효성 오류"},
         tags=["Posting"]
     )
-    @action(detail=True, methods=["post"], url_path="suggestion")
+    @action(detail=True, methods=["post"], url_path="suggestion", permission_classes=[IsAuthenticated])
     def send_suggestion(self, request, pk=None):
         posting = self.get_object()
         user = request.user
