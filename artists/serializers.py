@@ -72,18 +72,18 @@ class ArtistSerializer(serializers.ModelSerializer):
                     attrs[field] = getattr(self.instance, field)
         return attrs
 
-        def create(self, validated_data):
-            validated_data.pop("category_name", None)  # ← 추가
-            equipments = validated_data.pop("equipments", [])
-            artist = super().create(validated_data)
-            if equipments:
-                artist.equipments.set(
-                    EquipmentCategory.objects.filter(name__in=equipments)
+    def create(self, validated_data):
+        validated_data.pop("category_name", None)
+        equipments = validated_data.pop("equipments", [])
+        artist = super().create(validated_data)
+        if equipments:
+            artist.equipments.set(
+                EquipmentCategory.objects.filter(name__in=equipments)
             )
-            return artist
+        return artist
 
     def update(self, instance, validated_data):
-        validated_data.pop("category_name", None)  # ← 추가
+        validated_data.pop("category_name", None)
         equipments = validated_data.pop("equipments", None)
         artist = super().update(instance, validated_data)
         if equipments is not None:
