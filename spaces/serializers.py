@@ -11,21 +11,21 @@ def _norm_to_list(value):
     s = str(value).strip()
     return [s] if s else []
 
-
 class SpaceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
 
-    # ✅ 카테고리: 출력은 name, 입력은 문자열 name
+    # 카테고리: 출력은 name, 입력은 name 문자열
     category = serializers.CharField(source="category.name", read_only=True)
     category_name = serializers.CharField(write_only=True, required=False)
 
-    # ✅ 선호 카테고리: name 배열
+    # 선호 카테고리: 입력은 name 리스트, 출력은 name 리스트
     preferred_categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
     preferred_category_names = serializers.SerializerMethodField(read_only=True)
 
+    # 장비: 출력만
     equipments = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -53,13 +53,13 @@ class SpaceSerializer(serializers.ModelSerializer):
         return _norm_to_list(v)
 
     def get_equipments(self, obj):
-        return [e.name for e in obj.equipments.all()]  # ✅ 문자열 리스트 반환
+        return [e.name for e in obj.equipments.all()]
 
     def get_preferred_category_names(self, obj):
         return [c.name for c in obj.preferred_categories.all()]
 
     def validate(self, attrs):
-        # category name 처리
+        # category_name 처리
         category_name = self.initial_data.get("category_name")
         if category_name:
             try:
@@ -70,7 +70,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 )
             attrs["category"] = category
 
-        # preferred categories 처리
+        # preferred_categories 처리
         pref_names = self.initial_data.get("preferred_categories", [])
         if pref_names:
             if not isinstance(pref_names, (list, tuple)):
