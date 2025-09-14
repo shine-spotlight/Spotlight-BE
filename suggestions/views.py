@@ -32,7 +32,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="받은 제안함",
         operation_description="내 artist/space 프로필 기준으로 받은 제안만 반환합니다.",
-        tags=["Suggestion - 받은/보낸함"]
+        tags=["Suggestion"]
     )
     @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
@@ -60,7 +60,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="보낸 제안함",
         operation_description="내 artist/space 프로필 기준으로 보낸 제안만 반환합니다.",
-        tags=["Suggestion - 받은/보낸함"]
+        tags=["Suggestion"]
     )
     @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
@@ -233,7 +233,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 }
             )
         },
-        tags=["Suggestion - 상태변경"]
+        tags=["Suggestion"]
     )
     @action(detail=True, methods=["patch"], url_path="accept")
     @transaction.atomic
@@ -293,7 +293,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 }
             )
         },
-        tags=["Suggestion - 상태변경"]
+        tags=["Suggestion"]
     )
     @action(detail=True, methods=["post"], url_path="read")
     @transaction.atomic
