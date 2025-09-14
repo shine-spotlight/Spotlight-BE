@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -91,6 +93,13 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
     # ----- 생성 -----
+    @swagger_auto_schema(
+        operation_summary="제안 생성",
+        operation_description="아티스트 또는 공간이 상대에게 제안을 생성합니다.",
+        request_body=SuggestionSerializer,
+        responses={201: SuggestionSerializer, 400: "유효성 오류"},
+        tags=["Suggestion"]
+    )
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
@@ -167,6 +176,12 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
     # ----- 읽음 처리 -----
+    @swagger_auto_schema(
+        operation_summary="제안 읽음 처리",
+        operation_description="제안 수신자가 해당 제안을 읽음 처리합니다.",
+        responses={200: openapi.Response(description="읽음 처리 결과", examples={"application/json": {"id": 1, "is_read": True}})},
+        tags=["Suggestion"]
+    )
     @action(detail=True, methods=["post"], url_path="read")
     @transaction.atomic
     def read(self, request, pk=None):
@@ -188,6 +203,16 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         return Response({"id": sugg.id, "is_read": True}, status=200)
 
     # ----- 받은함 -----
+    @swagger_auto_schema(
+        operation_summary="받은 제안함 조회",
+        operation_description="현재 로그인한 사용자의 받은 제안함을 조회합니다.",
+        manual_parameters=[
+            openapi.Parameter('receiver_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='수신자 타입(artist|space)', required=False),
+            openapi.Parameter('receiver_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='수신자 ID', required=False),
+        ],
+        responses={200: SuggestionSerializer(many=True)},
+        tags=["Suggestion"]
+    )
     @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
         """
@@ -238,6 +263,16 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         return Response(ser.data, status=200)
 
     # ----- 보낸함 -----
+    @swagger_auto_schema(
+        operation_summary="보낸 제안함 조회",
+        operation_description="현재 로그인한 사용자의 보낸 제안함을 조회합니다.",
+        manual_parameters=[
+            openapi.Parameter('sender_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='발신자 타입(artist|space)', required=False),
+            openapi.Parameter('sender_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='발신자 ID', required=False),
+        ],
+        responses={200: SuggestionSerializer(many=True)},
+        tags=["Suggestion"]
+    )
     @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
         """
@@ -286,6 +321,12 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         return Response(ser.data, status=200)
 
     # ----- 수락 처리 -----
+    @swagger_auto_schema(
+        operation_summary="제안 수락 처리",
+        operation_description="제안 수신자가 해당 제안을 수락 처리합니다.",
+        responses={200: SuggestionSerializer},
+        tags=["Suggestion"]
+    )
     @action(detail=True, methods=["patch"], url_path="accept")
     @transaction.atomic
     def accept(self, request, pk=None):
@@ -315,6 +356,19 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(sugg).data, status=200)
 
     # ----- 상태 변경(관리자) -----
+    @swagger_auto_schema(
+        operation_summary="제안 상태 변경(관리자)",
+        operation_description="관리자가 임의로 제안의 상태(is_accepted)를 변경합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'is_accepted': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="수락 여부(true/false/null)")
+            },
+            required=['is_accepted']
+        ),
+        responses={200: SuggestionSerializer, 403: "권한 없음", 400: "유효성 오류"},
+        tags=["Suggestion"]
+    )
     @action(detail=True, methods=["patch"], url_path="status")
     @transaction.atomic
     def status(self, request, pk=None):

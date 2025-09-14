@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -56,6 +58,30 @@ class SpaceViewSet(viewsets.ModelViewSet):
 
     # ✅ 공간 정보 입력/수정 통합
     # POST /api/v1/spaces/info/
+    @swagger_auto_schema(
+        operation_summary="공간 정보 입력/수정",
+        operation_description="공간 소유자가 자신의 공간 정보를 입력 또는 수정합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'address': openapi.Schema(type=openapi.TYPE_STRING, description='주소'),
+                'place_region': openapi.Schema(type=openapi.TYPE_STRING, description='지역'),
+                'business_registration_number': openapi.Schema(type=openapi.TYPE_STRING, description='사업자 등록번호'),
+                'name': openapi.Schema(type=openapi.TYPE_STRING, description='공간명'),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description='설명'),
+                'profile_image_url': openapi.Schema(type=openapi.TYPE_STRING, description='프로필 이미지 URL'),
+                'kakao_map_link': openapi.Schema(type=openapi.TYPE_STRING, description='카카오맵 링크'),
+                'place_image': openapi.Schema(type=openapi.TYPE_STRING, format='binary', description='공간 이미지'),
+                'capacity_seated': openapi.Schema(type=openapi.TYPE_INTEGER, description='좌석 수'),
+                'capacity_standing': openapi.Schema(type=openapi.TYPE_INTEGER, description='스탠딩 수용 인원'),
+                'preferred_categories': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), description='선호 카테고리'),
+                'equipment_category_ids': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), description='보유 장비 카테고리 ID 배열'),
+                'custom_equipment_categories': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='직접입력 장비 카테고리'),
+            },
+        ),
+        responses={200: SpaceSerializer},
+        tags=["Space"]
+    )
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser], url_path="info")
     @transaction.atomic
     def set_info(self, request):
@@ -130,6 +156,18 @@ class SpaceViewSet(viewsets.ModelViewSet):
 
     # ✅ 필터링은 그대로 유지
     # GET /api/v1/spaces/filter/?region=서울&category=1&cap_min=50&cap_max=200
+    @swagger_auto_schema(
+        operation_summary="공간 필터링",
+        operation_description="여러 조건(region, category, cap_min, cap_max)으로 공간을 필터링합니다.",
+        manual_parameters=[
+            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='지역'),
+            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID'),
+            openapi.Parameter('cap_min', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최소 좌석 수'),
+            openapi.Parameter('cap_max', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최대 좌석 수'),
+        ],
+        responses={200: SpaceSerializer(many=True)},
+        tags=["Space"]
+    )
     @action(detail=False, methods=["get"], url_path="filter")
     def filter_spaces(self, request):
         qs = self.queryset

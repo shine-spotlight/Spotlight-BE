@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -32,6 +34,12 @@ class AdminViewSet(viewsets.ViewSet):
         return None
 
     # 아티스트 강제 조회
+    @swagger_auto_schema(
+        operation_summary="아티스트 강제 조회",
+        operation_description="관리자가 전체 아티스트 목록을 조회합니다.",
+        responses={200: ArtistSerializer(many=True)},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["get"], url_path="artists")
     def list_artists(self, request):
         guard = self._check_admin(request)
@@ -41,6 +49,13 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(ArtistSerializer(qs, many=True).data, status=200)
 
     # 아티스트 강제 수정
+    @swagger_auto_schema(
+        operation_summary="아티스트 강제 수정",
+        operation_description="관리자가 특정 아티스트 정보를 수정합니다.",
+        request_body=ArtistSerializer,
+        responses={200: ArtistSerializer, 404: "존재하지 않는 아티스트"},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["patch"], url_path="artists/(?P<artist_pk>[^/.]+)")
     def update_artist(self, request, artist_pk=None):
         guard = self._check_admin(request)
@@ -57,6 +72,12 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(ser.errors, status=400)
 
     # 공간 강제 조회
+    @swagger_auto_schema(
+        operation_summary="공간 강제 조회",
+        operation_description="관리자가 전체 공간 목록을 조회합니다.",
+        responses={200: SpaceSerializer(many=True)},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["get"], url_path="spaces")
     def list_spaces(self, request):
         guard = self._check_admin(request)
@@ -66,6 +87,13 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(SpaceSerializer(qs, many=True).data, status=200)
 
     # 공간 강제 수정
+    @swagger_auto_schema(
+        operation_summary="공간 강제 수정",
+        operation_description="관리자가 특정 공간 정보를 수정합니다.",
+        request_body=SpaceSerializer,
+        responses={200: SpaceSerializer, 404: "존재하지 않는 공간"},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["patch"], url_path="spaces/(?P<space_pk>[^/.]+)")
     def update_space(self, request, space_pk=None):
         guard = self._check_admin(request)
@@ -82,6 +110,12 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(ser.errors, status=400)
 
     # 공연 공고 강제 삭제
+    @swagger_auto_schema(
+        operation_summary="공연 공고 강제 삭제",
+        operation_description="관리자가 특정 공연 공고를 삭제합니다.",
+        responses={204: "삭제 성공", 404: "존재하지 않는 공고"},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["delete"], url_path="postings/(?P<posting_pk>[^/.]+)")
     def delete_posting(self, request, posting_pk=None):
         guard = self._check_admin(request)
@@ -95,6 +129,12 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(status=204)
 
     # 포인트 내역 전체 조회
+    @swagger_auto_schema(
+        operation_summary="포인트 내역 전체 조회",
+        operation_description="관리자가 전체 포인트 거래 내역을 조회합니다.",
+        responses={200: PointTransactionSerializer(many=True)},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["get"], url_path="points/history")
     def all_points_history(self, request):
         guard = self._check_admin(request)
@@ -104,6 +144,20 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(PointTransactionSerializer(qs, many=True).data, status=200)
 
     # 포인트 잔액 전체 조회 (유저별 목록)
+    @swagger_auto_schema(
+        operation_summary="포인트 잔액 전체 조회",
+        operation_description="관리자가 전체 유저의 포인트 잔액을 조회합니다.",
+        responses={200: openapi.Response(
+            description="유저별 포인트 잔액 목록",
+            examples={
+                "application/json": [
+                    {"user_id": 1, "balance": 10000},
+                    {"user_id": 2, "balance": 5000}
+                ]
+            }
+        )},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["get"], url_path="points/balance")
     def all_points_balance(self, request):
         guard = self._check_admin(request)
@@ -120,6 +174,21 @@ class AdminViewSet(viewsets.ViewSet):
         return Response(result, status=200)
 
     # 알림 강제 발송
+    @swagger_auto_schema(
+        operation_summary="알림 강제 발송",
+        operation_description="관리자가 특정 유저에게 알림을 발송합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'user': openapi.Schema(type=openapi.TYPE_INTEGER, description="유저 ID"),
+                'content': openapi.Schema(type=openapi.TYPE_STRING, description="알림 내용"),
+                'target_link': openapi.Schema(type=openapi.TYPE_STRING, description="타겟 링크")
+            },
+            required=['user', 'content', 'target_link']
+        ),
+        responses={201: NotificationSerializer, 400: "존재하지 않는 user_id 또는 필수값 누락"},
+        tags=["Admin"]
+    )
     @action(detail=False, methods=["post"], url_path="notifications")
     def send_notification(self, request):
         guard = self._check_admin(request)

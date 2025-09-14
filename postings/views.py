@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -45,6 +47,13 @@ class PostingViewSet(viewsets.ModelViewSet):
         return None
 
     # 공연 공고 생성
+    @swagger_auto_schema(
+        operation_summary="공연 공고 생성",
+        operation_description="공연 공고를 생성합니다. (공간 소유자 또는 관리자만 가능)",
+        request_body=PostingSerializer,
+        responses={201: PostingSerializer, 400: "유효성 오류"},
+        tags=["Posting"]
+    )
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
         if not ser.is_valid():
@@ -59,6 +68,13 @@ class PostingViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
     # 공연 공고 수정
+    @swagger_auto_schema(
+        operation_summary="공연 공고 수정",
+        operation_description="공연 공고를 수정합니다. (공간 소유자 또는 관리자만 가능)",
+        request_body=PostingSerializer,
+        responses={200: PostingSerializer, 400: "유효성 오류"},
+        tags=["Posting"]
+    )
     def update(self, request, *args, **kwargs):
         posting = self.get_object()
         guard = self._guard_space_owner(request, posting)
@@ -73,6 +89,12 @@ class PostingViewSet(viewsets.ModelViewSet):
         return bad_request(str(ser.errors), "update")
 
     # 공연 공고 삭제
+    @swagger_auto_schema(
+        operation_summary="공연 공고 삭제",
+        operation_description="공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)",
+        responses={204: "삭제 성공", 403: "권한 없음"},
+        tags=["Posting"]
+    )
     def destroy(self, request, *args, **kwargs):
         posting = self.get_object()
         guard = self._guard_space_owner(request, posting)
@@ -84,6 +106,18 @@ class PostingViewSet(viewsets.ModelViewSet):
 
     # 공연 공고 전체 조회 (필터링)
     # GET /api/v1/postings/?category=1&date_from=2025-01-01&date_to=2025-12-31&price_type=paid
+    @swagger_auto_schema(
+        operation_summary="공연 공고 전체 조회",
+        operation_description="공연 공고를 필터링 조건(category, price_type, date_from, date_to)으로 조회합니다.",
+        manual_parameters=[
+            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID', required=False),
+            openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
+            openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
+            openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
+        ],
+        responses={200: PostingSerializer(many=True)},
+        tags=["Posting"]
+    )
     def list(self, request, *args, **kwargs):
         qs = self.queryset
         category = request.query_params.get("category")
@@ -108,6 +142,20 @@ class PostingViewSet(viewsets.ModelViewSet):
 
     # 공고 기반 제안 전송 (아티스트 → 공간)
     # POST /api/v1/postings/{posting_pk}/suggestion/
+    @swagger_auto_schema(
+        operation_summary="공고 기반 제안 전송",
+        operation_description="아티스트가 특정 공연 공고에 대해 공간에 제안을 보냅니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'artist_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="아티스트 ID"),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지")
+            },
+            required=['artist_id', 'message']
+        ),
+        responses={201: openapi.Response(description="제안 생성 결과", examples={"application/json": {"suggestion_id": 1, "created": True}}), 400: "유효성 오류"},
+        tags=["Posting"]
+    )
     @action(detail=True, methods=["post"], url_path="suggestion")
     @transaction.atomic
     def send_suggestion(self, request, pk=None):

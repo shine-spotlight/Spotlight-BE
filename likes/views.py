@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -31,6 +33,19 @@ class LikeViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]   # ✅ 토큰 필수
 
     # 1) 아티스트 찜 토글
+    @swagger_auto_schema(
+        operation_summary="아티스트 찜 토글",
+        operation_description="아티스트를 찜하거나 찜을 해제합니다. (공간 보유자만 가능)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'artist_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="아티스트 ID")
+            },
+            required=['artist_id']
+        ),
+        responses={200: openapi.Response(description="찜 해제", examples={"application/json": {"liked": False}}), 201: openapi.Response(description="찜 성공", examples={"application/json": {"liked": True}})},
+        tags=["Like"]
+    )
     @action(detail=False, methods=["post"], url_path="artists")
     @transaction.atomic
     def like_artist(self, request):
@@ -63,6 +78,19 @@ class LikeViewSet(viewsets.GenericViewSet):
         return Response({"liked": True}, status=201)
 
     # 2) 공간 찜 토글
+    @swagger_auto_schema(
+        operation_summary="공간 찜 토글",
+        operation_description="공간을 찜하거나 찜을 해제합니다. (아티스트만 가능)",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'space_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="공간 ID")
+            },
+            required=['space_id']
+        ),
+        responses={200: openapi.Response(description="찜 해제", examples={"application/json": {"liked": False}}), 201: openapi.Response(description="찜 성공", examples={"application/json": {"liked": True}})},
+        tags=["Like"]
+    )
     @action(detail=False, methods=["post"], url_path="spaces")
     @transaction.atomic
     def like_space(self, request):
@@ -94,6 +122,12 @@ class LikeViewSet(viewsets.GenericViewSet):
         return Response({"liked": True}, status=201)
 
     # 3) 내가 찜한 목록
+    @swagger_auto_schema(
+        operation_summary="내가 찜한 목록 조회",
+        operation_description="현재 로그인한 사용자가 찜한 아티스트/공간 목록을 조회합니다.",
+        responses={200: LikeSerializer(many=True)},
+        tags=["Like"]
+    )
     def list(self, request, *args, **kwargs):
         qs = self.queryset.filter(user=request.user)   # ✅ query param 제거
         page = self.paginate_queryset(qs)

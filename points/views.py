@@ -1,3 +1,5 @@
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -25,6 +27,15 @@ def forbidden(detail: str, field: str = ""):
 class PointViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_summary="포인트 내역 조회",
+        operation_description="특정 사용자의 포인트 거래 내역을 조회합니다.",
+        manual_parameters=[
+            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
+        ],
+        responses={200: PointTransactionSerializer(many=True)},
+        tags=["Point"]
+    )
     @action(detail=False, methods=["get"], url_path="history")
     def history(self, request):
         user_id = request.query_params.get("user_id")
@@ -38,6 +49,15 @@ class PointViewSet(viewsets.ViewSet):
         ser = PointTransactionSerializer(qs, many=True)
         return Response(ser.data, status=200)
 
+    @swagger_auto_schema(
+        operation_summary="포인트 잔액 조회",
+        operation_description="특정 사용자의 포인트 잔액을 조회합니다.",
+        manual_parameters=[
+            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
+        ],
+        responses={200: openapi.Response(description="포인트 잔액", examples={"application/json": {"user_id": 1, "balance": 10000}})},
+        tags=["Point"]
+    )
     @action(detail=False, methods=["get"], url_path="balance")
     def balance(self, request):
         user_id = request.query_params.get("user_id")
@@ -51,6 +71,19 @@ class PointViewSet(viewsets.ViewSet):
         balance = sum([tx.amount if tx.transaction_type == "charge" else -tx.amount for tx in qs])
         return Response({"user_id": int(user_id), "balance": balance}, status=200)
 
+    @swagger_auto_schema(
+        operation_summary="포인트 충전",
+        operation_description="현재 로그인한 사용자의 포인트를 충전합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="충전 금액")
+            },
+            required=['amount']
+        ),
+        responses={201: PointTransactionSerializer},
+        tags=["Point"]
+    )
     @action(detail=False, methods=["post"], url_path="charge")
     @transaction.atomic
     def charge(self, request):
@@ -66,6 +99,19 @@ class PointViewSet(viewsets.ViewSet):
         )
         return Response(PointTransactionSerializer(tx).data, status=201)
 
+    @swagger_auto_schema(
+        operation_summary="포인트 차감",
+        operation_description="현재 로그인한 사용자의 포인트를 차감합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="차감 금액")
+            },
+            required=['amount']
+        ),
+        responses={201: PointTransactionSerializer, 400: "잔액 부족"},
+        tags=["Point"]
+    )
     @action(detail=False, methods=["post"], url_path="deduct")
     @transaction.atomic
     def deduct(self, request):

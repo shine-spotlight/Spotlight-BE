@@ -19,28 +19,8 @@ def bad_request(detail: str, field: str = "non_field_error", extra=None):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.AllowAny] 
-
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    
-    @swagger_auto_schema(
-      operation_description="User",
-      manual_parameters=[
-          openapi.Parameter(
-                "code",
-                openapi.IN_QUERY,
-                description="카카오에서 redirect된 인가 code",
-                type=openapi.TYPE_STRING,
-                required=True,
-            )
-        ], 
-      responses={
-            200: openapi.Response("로그인 성공"),
-            400: "잘못된 요청",
-            502: "카카오 API 오류",
-        },
-    )
 
     def get_permissions(self):
         if self.action in ["kakao_callback"]:  # 로그인은 열어둠
@@ -48,7 +28,33 @@ class UserViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]  # 나머지는 토큰 필요
 
     # ✅ 카카오 로그인 콜백
-    @action(detail=False, methods=["get"], url_path="auth/kakao/callback")
+    @swagger_auto_schema(
+        operation_summary="카카오 로그인 콜백",
+        operation_description="카카오 OAuth 인가 코드를 받아 access token을 교환하고, 카카오 사용자 정보를 조회한 뒤 서비스 사용자로 등록/로그인 처리합니다. 최종적으로 서비스용 accessToken과 사용자 정보를 반환합니다.",
+        manual_parameters=[
+            openapi.Parameter(
+                name="code",
+                in_=openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                description="카카오 OAuth redirect 후 전달된 authorization code",
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="successfully logged in",
+                examples={
+                    "application/json": {
+                        "accessToken": "string",
+                        "user": {"id": 1, "username": "user", "role": "artist", "phone_number": "010-0000-0000"}
+                    }
+                }
+            ),
+            400: "bad request"
+        },
+        tags=["Auth"]
+    )
+    @action(methods=["get"], detail=False, url_path="auth/kakao/callback")
     def kakao_callback(self, request):
         code = request.query_params.get("code")
         if not code:
@@ -103,17 +109,42 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response({"accessToken": token.key, "user": user_data}, status=status.HTTP_200_OK)
 
     # ✅ 로그아웃
-    @action(detail=False, methods=["post"], url_path="auth/kakao/logout")
+    @swagger_auto_schema(
+        operation_summary="카카오 로그아웃",
+        operation_description="카카오 인증 토큰을 삭제하여 로그아웃 처리합니다.",
+        responses={200: "Logged out successfully."},
+        tags=["Auth"]
+    )
+    @action(methods=["post"], detail=False, url_path="auth/kakao/logout")
     def kakao_logout(self, request):
         Token.objects.filter(user=request.user).delete()
         return Response({"message": "Logged out successfully."}, status=200)
 
     # ✅ 내 정보 조회
+    @swagger_auto_schema(
+        operation_summary="내 정보 조회",
+        operation_description="현재 로그인한 사용자의 정보를 반환합니다.",
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
         return Response(UserSerializer(request.user).data)
 
     # ✅ 내 role 수정
+    @swagger_auto_schema(
+        operation_summary="내 role 수정",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 수정합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
+            },
+            required=['role']
+        ),
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
     @action(detail=False, methods=["post"], url_path="type")
     def set_role(self, request):
         role = request.data.get("role")
@@ -124,6 +155,19 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(UserSerializer(request.user).data)
 
     # ✅ 내 전화번호 수정
+    @swagger_auto_schema(
+        operation_summary="내 전화번호 수정",
+        operation_description="현재 로그인한 사용자의 전화번호를 수정합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'phone_number': openapi.Schema(type=openapi.TYPE_STRING, description="전화번호")
+            },
+            required=['phone_number']
+        ),
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
     @action(detail=False, methods=["post"], url_path="phone")
     def set_phone(self, request):
         phone_number = request.data.get("phone_number")
