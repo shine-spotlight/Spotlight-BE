@@ -13,14 +13,11 @@ from suggestions.models import Suggestion
 from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 
-
-
 def bad_request(detail: str, field: str):
     return Response(
         {"detail": detail, "code": "invalid_param", "field": field},
         status=400
     )
-
 
 def forbidden(detail: str, field: str = "posting_pk"):
     return Response(
@@ -28,17 +25,15 @@ def forbidden(detail: str, field: str = "posting_pk"):
         status=403
     )
 
-
 class PostingViewSet(viewsets.ModelViewSet):
     queryset = Posting.objects.all().order_by("-created_at")
     serializer_class = PostingSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    # 권한 가드: 생성/수정/삭제는 공간 소유자 또는 관리자만
     def _guard_space_owner(self, request, posting_or_space):
         space = posting_or_space.space if isinstance(posting_or_space, Posting) else posting_or_space
 
-        if request.user.is_superuser:   # ✅ 관리자면 무조건 허용
+        if request.user.is_superuser:
             return None
 
         if not request.user.is_authenticated:
@@ -49,10 +44,9 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         return None
 
-    # 공연 공고 생성
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
-        operation_description="공연 공고를 생성합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="새로운 공연 공고를 등록합니다. (공간 소유자 또는 관리자만 가능)",
         request_body=PostingSerializer,
         responses={201: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -70,10 +64,9 @@ class PostingViewSet(viewsets.ModelViewSet):
         posting = ser.save()
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
-    # 공연 공고 수정
     @swagger_auto_schema(
         operation_summary="공연 공고 수정",
-        operation_description="공연 공고를 수정합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="기존 공연 공고의 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)",
         request_body=PostingSerializer,
         responses={200: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -91,10 +84,9 @@ class PostingViewSet(viewsets.ModelViewSet):
             return Response(self.get_serializer(posting).data, status=200)
         return bad_request(str(ser.errors), "update")
 
-    # 공연 공고 삭제
     @swagger_auto_schema(
         operation_summary="공연 공고 삭제",
-        operation_description="공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="특정 공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)",
         responses={204: "삭제 성공", 403: "권한 없음"},
         tags=["Posting"]
     )
@@ -107,11 +99,9 @@ class PostingViewSet(viewsets.ModelViewSet):
         posting.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # 공연 공고 전체 조회 (필터링)
-    # GET /api/v1/postings/?category=1&date_from=2025-01-01&date_to=2025-12-31&price_type=paid
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
-        operation_description="공연 공고를 필터링 조건(category, price_type, date_from, date_to)으로 조회합니다.",
+        operation_description="등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to)로 조회합니다.",
         manual_parameters=[
             openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
@@ -145,7 +135,7 @@ class PostingViewSet(viewsets.ModelViewSet):
     
     @swagger_auto_schema(
         operation_summary="공연 공고 상세 조회",
-        operation_description="특정 공연 공고를 상세 조회합니다.",
+        operation_description="특정 공연 공고의 상세 정보를 조회합니다.",
         responses={200: PostingSerializer, 404: "존재하지 않음"},
         tags=["Posting"]
     )
@@ -154,20 +144,48 @@ class PostingViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(posting)
         return Response(ser.data, status=200)
 
-    # 공고 기반 제안 전송 (아티스트 → 공간)
-    # POST /api/v1/postings/{posting_pk}/suggestion/
     @swagger_auto_schema(
         operation_summary="공고 기반 제안 전송",
-        operation_description="아티스트가 특정 공연 공고에 대해 공간에 제안을 보냅니다.",
+        operation_description="""
+아티스트가 특정 공연 공고에 대해 공간에 제안을 보냅니다.
+
+- 이 API는 **아티스트만** 사용할 수 있습니다.
+- 요청 URL의 {id}는 제안하려는 공연 공고의 id입니다.
+- 요청 body에는 **message**만 입력하면 됩니다.
+- 아티스트 정보는 토큰(로그인)에서 자동으로 추출됩니다.
+- 공간 정보는 해당 공고의 space로 자동 연결됩니다.
+
+**예시 요청**
+```json
+POST /api/v1/postings/1/suggestion/
+{
+  "message": "이 공연에 참여하고 싶어요!"
+}
+```
+""",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'artist_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="아티스트 ID"),
-                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지")
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지 (필수)")
             },
-            required=['artist_id', 'message']
+            required=['message']
         ),
-        responses={201: openapi.Response(description="제안 생성 결과", examples={"application/json": {"suggestion_id": 1, "created": True}}), 400: "유효성 오류"},
+        responses={
+            201: openapi.Response(
+                description="제안 생성 결과",
+                examples={"application/json": {
+                    "id": 1,
+                    "artist": 2,
+                    "space": 3,
+                    "posting": 1,
+                    "message": "이 공연에 참여하고 싶어요!",
+                    "is_accepted": False,
+                    "is_read": False,
+                    "created_at": "2025-09-14T12:34:56Z"
+                }}
+            ),
+            400: "유효성 오류"
+        },
         tags=["Posting"]
     )
     @action(detail=True, methods=["post"], url_path="suggestion", permission_classes=[IsAuthenticated])

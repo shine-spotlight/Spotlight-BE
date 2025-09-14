@@ -28,14 +28,14 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     queryset = Suggestion.objects.all().order_by("-created_at")
     serializer_class = SuggestionSerializer
     permission_classes = [IsAuthenticated]
-    from rest_framework.decorators import action
 
-
+    @swagger_auto_schema(
+        operation_summary="받은 제안함",
+        operation_description="내 artist/space 프로필 기준으로 받은 제안만 반환합니다.",
+        tags=["Suggestion - 받은/보낸함"]
+    )
     @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
-        """
-        받은 제안함: 내 artist/space 프로필 기준으로 받은 제안만 반환
-        """
         user = request.user
         role = getattr(user, "role", None)
         if role == "artist":
@@ -57,11 +57,13 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
 
+    @swagger_auto_schema(
+        operation_summary="보낸 제안함",
+        operation_description="내 artist/space 프로필 기준으로 보낸 제안만 반환합니다.",
+        tags=["Suggestion - 받은/보낸함"]
+    )
     @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
-        """
-        보낸 제안함: 내 artist/space 프로필 기준으로 보낸 제안만 반환
-        """
         user = request.user
         role = getattr(user, "role", None)
         if role == "artist":
@@ -96,37 +98,27 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             return None
 
     def _receiver_from_body(self, data: dict):
-        """
-        body에서 receiver를 결정 (artist 또는 space 중 정확히 하나만 허용)
-        반환: ("artist", Artist) or ("space", Space) or (None, None, 에러응답)
-        """
         artist = data.get("artist")
         space  = data.get("space")
-
-        # None, 빈문자열, "null", 0 등은 모두 False로 간주
         artist = artist if artist not in [None, "", "null", 0, "0"] else None
         space = space if space not in [None, "", "null", 0, "0"] else None
 
         if artist and space:
             return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
-
         if not artist and not space:
             return None, None, bad_request("receiver가 없습니다. artist 또는 space 중 하나는 필수입니다.", "receiver")
-
         if artist:
             try:
                 artist_obj = Artist.objects.get(pk=artist)
             except Artist.DoesNotExist:
                 return None, None, bad_request("존재하지 않는 artist 입니다.", "artist")
             return "artist", artist_obj, None
-
         if space:
             try:
                 space_obj = Space.objects.get(pk=space)
             except Space.DoesNotExist:
                 return None, None, bad_request("존재하지 않는 space 입니다.", "space")
             return "space", space_obj, None
-
         return None, None, bad_request("receiver를 판별할 수 없습니다.", "receiver")
 
     def _notify(self, user, content, target_link):
@@ -164,10 +156,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     )
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """
-        sender는 토큰에서, receiver는 body에서 결정
-        항상 artist/space 둘 다 serializer에 세팅
-        """
         user = request.user
         role = getattr(user, "role", None)
         if role not in ("artist", "space"):
@@ -187,7 +175,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 return bad_request("아티스트는 공간에게만 제안할 수 있습니다.", "space")
             data["artist"] = my_artist.id
             data["space"] = receiver_obj.id
-
         else:  # role == "space"
             my_space = self._get_my_space(user)
             if not my_space:
@@ -197,7 +184,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             data["space"] = my_space.id
             data["artist"] = receiver_obj.id
 
-        # 자기 자신에게 보내는 케이스 방지
         if role == "artist" and my_artist.user_id == receiver_obj.user_id:
             return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
         if role == "space" and my_space.user_id == receiver_obj.user_id:
@@ -224,6 +210,31 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    @swagger_auto_schema(
+        operation_summary="제안 수락 처리",
+        operation_description="""
+제안의 수신자(공간 또는 아티스트)만 해당 제안을 수락할 수 있습니다.
+
+- 아티스트가 보낸 제안: 공간 소유자만 수락 가능
+- 공간이 보낸 제안: 아티스트 본인만 수락 가능
+- 이미 수락된 제안은 다시 수락할 수 없습니다.
+""",
+        responses={
+            200: SuggestionSerializer,
+            403: openapi.Response(
+                description="권한 없음",
+                examples={
+                    "application/json": {
+                        "detail": "제안 수신자만 수락할 수 있습니다.",
+                        "code": "permission_denied",
+                        "field": "accept"
+                    }
+                }
+            )
+        },
+        tags=["Suggestion - 상태변경"]
+    )
     @action(detail=True, methods=["patch"], url_path="accept")
     @transaction.atomic
     def accept(self, request, pk=None):
@@ -257,6 +268,33 @@ class SuggestionViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(suggestion).data, status=200)
 
+    @swagger_auto_schema(
+        operation_summary="제안 읽음 처리",
+        operation_description="""
+제안의 수신자(공간 또는 아티스트)만 해당 제안을 읽음 처리할 수 있습니다.
+
+- 아티스트가 보낸 제안: 공간 소유자만 읽음 처리 가능
+- 공간이 보낸 제안: 아티스트 본인만 읽음 처리 가능
+- 이미 읽음 처리된 제안은 다시 처리하지 않습니다.
+""",
+        responses={
+            200: openapi.Response(
+                description="읽음 처리 결과",
+                examples={"application/json": {"id": 1, "is_read": True}}
+            ),
+            403: openapi.Response(
+                description="권한 없음",
+                examples={
+                    "application/json": {
+                        "detail": "제안 수신자만 읽음 처리할 수 있습니다.",
+                        "code": "permission_denied",
+                        "field": "read"
+                    }
+                }
+            )
+        },
+        tags=["Suggestion - 상태변경"]
+    )
     @action(detail=True, methods=["post"], url_path="read")
     @transaction.atomic
     def read(self, request, pk=None):

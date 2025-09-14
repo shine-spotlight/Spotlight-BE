@@ -26,9 +26,20 @@ class PointViewSet(viewsets.ViewSet):
 
     @swagger_auto_schema(
         operation_summary="포인트 내역 조회",
-        operation_description="본인(아티스트) 또는 관리자만 포인트 거래 내역을 조회할 수 있습니다.",
+        operation_description="""
+본인(아티스트) 또는 관리자만 포인트 거래 내역을 조회할 수 있습니다.
+
+- 일반 유저(아티스트)는 쿼리 파라미터 없이 호출하면 본인 내역이 조회됩니다.
+- 관리자는 user_id 쿼리 파라미터를 지정하면 해당 유저의 내역을 조회할 수 있습니다.
+""",
         manual_parameters=[
-            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=False),
+            openapi.Parameter(
+                'user_id',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                description='조회할 유저 ID (관리자만 사용, 일반 유저는 생략)',
+                required=False
+            ),
         ],
         responses={200: PointTransactionSerializer(many=True)},
         tags=["Point"]
@@ -36,11 +47,9 @@ class PointViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="history")
     def history(self, request):
         user_id = request.query_params.get("user_id")
-        # user_id가 없으면 토큰의 본인 id 사용
         if not user_id:
             user_id = request.user.id
 
-        # 관리자(superuser)는 아무 user_id나 조회 가능, 그 외는 본인만
         if not request.user.is_superuser and str(request.user.id) != str(user_id):
             return forbidden("본인만 자신의 포인트 내역을 조회할 수 있습니다.", "user_id")
 
@@ -50,11 +59,27 @@ class PointViewSet(viewsets.ViewSet):
 
     @swagger_auto_schema(
         operation_summary="포인트 잔액 조회",
-        operation_description="본인(아티스트) 또는 관리자만 포인트 잔액을 조회할 수 있습니다.",
+        operation_description="""
+본인(아티스트) 또는 관리자만 포인트 잔액을 조회할 수 있습니다.
+
+- 일반 유저(아티스트)는 쿼리 파라미터 없이 호출하면 본인 잔액이 조회됩니다.
+- 관리자는 user_id 쿼리 파라미터를 지정하면 해당 유저의 잔액을 조회할 수 있습니다.
+""",
         manual_parameters=[
-            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
+            openapi.Parameter(
+                'user_id',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                description='조회할 유저 ID (관리자만 사용, 일반 유저는 생략)',
+                required=False
+            ),
         ],
-        responses={200: openapi.Response(description="포인트 잔액", examples={"application/json": {"user_id": 1, "balance": 10000}})},
+        responses={
+            200: openapi.Response(
+                description="포인트 잔액",
+                examples={"application/json": {"user_id": 1, "balance": 10000}}
+            )
+        },
         tags=["Point"]
     )
     @action(detail=False, methods=["get"], url_path="balance")
@@ -76,7 +101,7 @@ class PointViewSet(viewsets.ViewSet):
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="충전 금액")
+                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="충전 금액 (필수)")
             },
             required=['amount']
         ),
@@ -104,7 +129,7 @@ class PointViewSet(viewsets.ViewSet):
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="차감 금액")
+                'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="차감 금액 (필수)")
             },
             required=['amount']
         ),

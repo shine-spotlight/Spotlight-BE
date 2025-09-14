@@ -29,10 +29,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]   # ✅ 토큰 필수
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
-    # ✅ /api/v1/notifications/list/
     @swagger_auto_schema(
         operation_summary="내 알림 목록 조회",
-        operation_description="현재 로그인한 사용자의 알림 목록을 조회합니다.",
+        operation_description="""
+현재 로그인한 사용자의 알림 목록을 최신순으로 조회합니다.
+
+- 반드시 토큰 인증이 필요합니다.
+- 본인 알림만 조회할 수 있습니다.
+- 페이지네이션이 적용됩니다.
+""",
         responses={200: NotificationSerializer(many=True)},
         tags=["Notification"]
     )
@@ -46,7 +51,13 @@ class NotificationViewSet(viewsets.ModelViewSet):
     
     @swagger_auto_schema(
         operation_summary="알림 상세 조회",
-        operation_description="특정 알림을 조회합니다. 본인 또는 관리자만 접근할 수 있습니다.",
+        operation_description="""
+특정 알림의 상세 정보를 조회합니다.
+
+- 반드시 토큰 인증이 필요합니다.
+- 본인 알림만 조회할 수 있습니다. (관리자는 예외적으로 접근 가능)
+- 없는 알림 id로 요청 시 404 반환
+""",
         responses={200: NotificationSerializer, 403: "권한 없음", 404: "존재하지 않음"},
         tags=["Notification"]
     )
@@ -57,10 +68,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(notif)
         return Response(ser.data, status=200)
 
-    # ✅ 알림 읽음 처리
     @swagger_auto_schema(
         operation_summary="알림 읽음 처리",
-        operation_description="특정 알림을 읽음 처리합니다.",
+        operation_description="""
+특정 알림을 읽음 처리합니다.
+
+- 반드시 토큰 인증이 필요합니다.
+- 본인 알림만 읽음 처리할 수 있습니다. (관리자는 예외적으로 접근 가능)
+- 이미 읽음 처리된 알림도 다시 요청 가능 (is_read=True로 응답)
+""",
         responses={200: openapi.Response(description="읽음 처리 결과", examples={"application/json": {"id": 1, "is_read": True}})},
         tags=["Notification"]
     )
@@ -73,10 +89,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notif.save(update_fields=["is_read"])
         return Response({"id": notif.id, "is_read": True}, status=200)
 
-    # ✅ 알림 삭제
     @swagger_auto_schema(
         operation_summary="알림 삭제",
-        operation_description="특정 알림을 삭제합니다.",
+        operation_description="""
+특정 알림을 삭제합니다.
+
+- 반드시 토큰 인증이 필요합니다.
+- 본인 알림만 삭제할 수 있습니다. (관리자는 예외적으로 접근 가능)
+- 성공 시 204 반환
+""",
         responses={204: "삭제 성공", 403: "권한 없음"},
         tags=["Notification"]
     )
