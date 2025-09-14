@@ -15,6 +15,9 @@ def bad_request(detail: str, field: str = "non_field_error", extra=None):
         payload["error"] = extra
     return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+def forbidden(detail: str, field: str = "user_pk"):
+    payload = {"detail": detail, "code": "permission_denied", "field": field}
+    return Response(payload, status=status.HTTP_403_FORBIDDEN)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -95,11 +98,15 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="type")
     def set_role(self, request):
         role = request.data.get("role")
+
         if role not in ["artist", "space"]:
             return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
+        if request.user.role:
+            return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
         request.user.role = role
         request.user.save()
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(request.user).data, status=200)
+        
 
     # ✅ 내 전화번호 수정
     @action(detail=False, methods=["post"], url_path="phone")

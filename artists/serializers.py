@@ -16,27 +16,31 @@ def _norm_to_list(value):
 
 class ArtistSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    category = serializers.CharField(source="category.name", read_only=True)  # ✅ 문자열만 반환
-    category_id = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(),
-        source="category",
-        write_only=True,
-        required=False
-    )
+    category = serializers.CharField(read_only=True)  # 출력
+    category_name = serializers.CharField(write_only=True, required=False)  # 입력 문자열
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
     equipments = serializers.SerializerMethodField(read_only=True)
+
+    class ArtistSerializer(serializers.ModelSerializer):
+        phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+        category = serializers.CharField(source="category.name", read_only=True)   # 출력: 문자열
+
+    # 입력은 name 문자열
+        category_name = serializers.CharField(write_only=True, required=False)
+
+        equipments = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
         fields = [
             "id", "user", "name", "bio", "number_of_members",
-            "category", "category_id", "custom_category",
+            "category", "category_name", "custom_category",
             "equipments", "portfolio_links",
             "profile_image", "profile_image_url", "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
         ]
-        read_only_fields = ["id", "created_at", "equipments", "phone_number"]
+        read_only_fields = ["id", "created_at", "equipments", "phone_number", "category"]
 
-    # 정규화/검증
     def validate_portfolio_links(self, v): return _norm_to_list(v)
     def validate_region(self, v): return _norm_to_list(v)
     def validate_profile_image_url(self, url):
@@ -45,4 +49,16 @@ class ArtistSerializer(serializers.ModelSerializer):
         return url
 
     def get_equipments(self, obj):
-        return [e.name for e in obj.equipments.all()]  # ✅ 문자열만 반환
+        return [e.name for e in obj.equipments.all()]
+
+    def validate(self, attrs):
+        category_name = self.initial_data.get("category_name")
+        if category_name:
+            try:
+                category = Category.objects.get(name=category_name)
+            except Category.DoesNotExist:
+                raise serializers.ValidationError({"category_name": f"존재하지 않는 카테고리입니다: {category_name}"})
+            attrs["category"] = category
+        elif self.instance and not attrs.get("category"):
+            attrs["category"] = self.instance.category  # 기존 값 유지
+        return attrs

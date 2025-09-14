@@ -59,8 +59,9 @@ class ArtistViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser], url_path="info")
     @transaction.atomic
     def set_info(self, request):
+        artist, _ = Artist.objects.get_or_create(user=request.user)
         try:
-            artist = Artist.objects.get(user=request.user)
+            artist = Artist.objects.get_or_create(user=request.user)
         except Artist.DoesNotExist:
             return Response(
                 {"detail": "아티스트 프로필이 없습니다."},
