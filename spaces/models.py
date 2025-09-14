@@ -28,7 +28,7 @@ class Space(models.Model):
         related_name="main_category_spaces"   # ✅ 수정
     )
     preferred_categories = models.ManyToManyField(
-        SpaceCategory, 
+        Category, 
         blank=True, 
         related_name="preferred_spaces"       # ✅ 수정
     )

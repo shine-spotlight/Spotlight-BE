@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Space, SpaceCategory
 from equipmentcategories.models import EquipmentCategory
+from categories.models import Category
 
 def _norm_to_list(value):
     if value is None:
@@ -53,12 +54,12 @@ class SpaceSerializer(serializers.ModelSerializer):
         elif self.instance and not attrs.get("category"):
             attrs["category"] = self.instance.category  # 기존 값 유지
 
-        # preferred_categories → SpaceCategory 객체 리스트로 변환
+        # preferred_categories → Category 객체 리스트로 변환 (Artist와 동일)
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
-            categories = SpaceCategory.objects.filter(name__in=preferred_categories_names)
+            categories = Category.objects.filter(name__in=preferred_categories_names)
             if len(categories) != len(preferred_categories_names):
                 found_names = set(categories.values_list("name", flat=True))
                 not_found = set(preferred_categories_names) - found_names
@@ -104,3 +105,4 @@ class SpaceSerializer(serializers.ModelSerializer):
             )
         if preferred_categories is not None:
             space.preferred_categories.set(preferred_categories)
+        return space
