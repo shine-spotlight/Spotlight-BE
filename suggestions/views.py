@@ -56,8 +56,8 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         body에서 receiver를 결정 (artist 또는 space 중 정확히 하나만 허용)
         반환: ("artist", Artist) or ("space", Space) or (None, None, 에러응답)
         """
-        artist_id = data.get("artist")
-        space_id  = data.get("space")
+        artist_id = data.get("artist_id")
+        space_id  = data.get("space_id")
 
         if artist_id and space_id:
             return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
