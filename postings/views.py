@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
+from suggestions.serializers import SuggestionSerializer
 
 from .models import Posting
 from .serializers import PostingSerializer
@@ -174,18 +175,19 @@ class PostingViewSet(viewsets.ModelViewSet):
         posting = self.get_object()
         user = request.user
 
-        # 토큰에서 내 아티스트 프로필 찾기
+        # 1번: 아티스트만 접근 가능하게 role 체크
+        if not hasattr(user, "role") or user.role != "artist":
+            return forbidden("아티스트만 제안을 보낼 수 있습니다.", "role")
+
         try:
             my_artist = Artist.objects.get(user=user)
         except Artist.DoesNotExist:
             return Response({"detail": "아티스트 프로필이 없습니다."}, status=400)
 
-        # message만 body에서 받음
         message = request.data.get("message", "").strip()
         if not message:
             return Response({"detail": "message는 필수입니다."}, status=400)
 
-        # Suggestion 생성
         suggestion = Suggestion.objects.create(
             sender_type=Suggestion.SENDER_ARTIST,
             artist=my_artist,
@@ -194,7 +196,6 @@ class PostingViewSet(viewsets.ModelViewSet):
             message=message
         )
 
-        # 응답
         return Response(SuggestionSerializer(suggestion).data, status=201)
     
     @swagger_auto_schema(auto_schema=None) 
