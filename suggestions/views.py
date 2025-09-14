@@ -434,4 +434,4 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 target_link=f"/api/v1/suggestions/{sugg.id}/"
             )
 
-        return Response(self.get_serializer(sugg).data,
+        return Response(self.get_serializer(sugg).data, status=200)
