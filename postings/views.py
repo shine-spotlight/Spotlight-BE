@@ -168,49 +168,32 @@ class PostingViewSet(viewsets.ModelViewSet):
         tags=["Posting"]
     )
     @action(detail=True, methods=["post"], url_path="suggestion")
-    @transaction.atomic
     def send_suggestion(self, request, pk=None):
         posting = self.get_object()
-        artist_id = request.data.get("artist_id")
-        message = request.data.get("message")
+        user = request.user
 
-        if not artist_id:
-            return bad_request("artist_id는 필수입니다.", "artist_id")
-        if not message or not str(message).strip():
-            return bad_request("message는 필수입니다.", "message")
-
-        # sender 권한 가드: 본인 Artist인지 확인
+        # 토큰에서 내 아티스트 프로필 찾기
         try:
-            artist = Artist.objects.get(pk=artist_id)
+            my_artist = Artist.objects.get(user=user)
         except Artist.DoesNotExist:
-            return bad_request("존재하지 않는 artist_id 입니다.", "artist_id")
+            return Response({"detail": "아티스트 프로필이 없습니다."}, status=400)
 
-        if not request.user.is_superuser:   # ✅ 관리자면 무조건 통과
-            if getattr(request.user, "id", None) != getattr(artist.user, "id", None):
-                return forbidden("본인 아티스트 프로필로만 제안할 수 있습니다.", "artist_id")
+        # message만 body에서 받음
+        message = request.data.get("message", "").strip()
+        if not message:
+            return Response({"detail": "message는 필수입니다."}, status=400)
 
-        # 중복 제안 방지
-        exists = Suggestion.objects.filter(
-            artist_id=artist.id,
-            space_id=posting.space_id,
-            is_accepted__isnull=True,
-        ).exists()
-        if exists:
-            return bad_request("동일 아티스트/공간 조합의 진행중 제안이 존재합니다.", "suggestion")
+        # Suggestion 생성
+        suggestion = Suggestion.objects.create(
+            sender_type=Suggestion.SENDER_ARTIST,
+            artist=my_artist,
+            space=posting.space,
+            posting=posting,
+            message=message
+        )
 
-        # Suggestion 모델에 posting_id 필드가 있을 때만 값 세팅
-        sugg_kwargs = {
-            "sender_type": "artist",
-            "artist_id": artist.id,
-            "space_id": posting.space_id,
-            "message": message,
-        }
-        if "posting_id" in [f.name for f in Suggestion._meta.get_fields()]:
-            sugg_kwargs["posting_id"] = posting.id
-
-        sugg = Suggestion.objects.create(**sugg_kwargs)
-
-        return Response({"suggestion_id": sugg.id, "created": True}, status=201)
+        # 응답
+        return Response(SuggestionSerializer(suggestion).data, status=201)
     
     @swagger_auto_schema(auto_schema=None) 
     def partial_update(self, request, *args, **kwargs):
