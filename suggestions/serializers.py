@@ -57,24 +57,21 @@ class SuggestionSerializer(serializers.ModelSerializer):
         artist = attrs.get("artist", None)
         space = attrs.get("space", None)
 
-    # partial update일 때만 instance와 합침
-        if self.instance:
-            if artist is None:
-                artist = getattr(self.instance, "artist", None)
-            if space is None:
-                space = getattr(self.instance, "space", None)
-
+        # 동시에 들어오면 막기
         if artist and space:
-            raise serializers.ValidationError({"detail": "artist와 space 중 하나만 입력해야 합니다."})
-        if not artist and not space:
-            raise serializers.ValidationError({"detail": "artist 또는 space 중 하나는 필수입니다."})
+            raise serializers.ValidationError(
+                {"detail": "artist와 space는 동시에 입력할 수 없습니다."}
+            )
 
-    # 메시지 필수
+        # ✅ 여기서는 "하나도 없으면 안 된다" 체크 제거
+        #    → SuggestionViewSet.create()에서 role 기반으로 채워줌
+
+        # 메시지 필수
         message = attrs.get("message", "").strip()
         if not message:
             raise serializers.ValidationError({"message": "message는 필수입니다."})
 
-    # 조건부 필드 허용 범위
+        # 조건부 필드 검증 (기존 그대로 유지)
         is_free_allowed = attrs.get("is_free_allowed", getattr(self.instance, "is_free_allowed", None) if self.instance else None)
         is_performed_confirmed = attrs.get("is_performed_confirmed", getattr(self.instance, "is_performed_confirmed", None) if self.instance else None)
         sender_type = getattr(self.instance, "sender_type", None) if self.instance else None
@@ -84,6 +81,8 @@ class SuggestionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
 
         return attrs
+
+
     def get_receiver_phone(self, obj: Suggestion):
         """
         수락 전에는 절대 노출하지 않음.
