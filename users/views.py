@@ -130,9 +130,10 @@ class UserViewSet(viewsets.ModelViewSet):
         responses={200: UserSerializer},
         tags=["User"]
     )
-    def retrieve(self, request):
-        return Response(UserSerializer(request.user).data)
-
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return Response(UserSerializer(instance).data)
     # ✅ 내 role 등록
     @swagger_auto_schema(
         operation_summary="내 role 등록",
