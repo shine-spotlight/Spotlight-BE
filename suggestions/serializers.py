@@ -54,18 +54,16 @@ class SuggestionSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
-        artist = attrs.get("artist")
-        space = attrs.get("space")
-        if artist in ["", 0, "0", "null"]:
-            artist = None
-        if space in ["", 0, "0", "null"]:
-            space = None
+        artist = attrs.get("artist", None)
+        space = attrs.get("space", None)
+
     # partial update일 때만 instance와 합침
         if self.instance:
             if artist is None:
                 artist = getattr(self.instance, "artist", None)
             if space is None:
                 space = getattr(self.instance, "space", None)
+
         if artist and space:
             raise serializers.ValidationError({"detail": "artist와 space 중 하나만 입력해야 합니다."})
         if not artist and not space:

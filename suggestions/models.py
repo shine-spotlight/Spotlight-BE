@@ -14,8 +14,8 @@ class Suggestion(models.Model):
     )
 
     sender_type = models.CharField(max_length=10, choices=SENDER_TYPES)
-    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="suggestions_as_artist")
-    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="suggestions_as_space")
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="suggestions_as_artist", null=True, blank=True)
+space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name="suggestions_as_space", null=True, blank=True)
     posting = models.ForeignKey(Posting, on_delete=models.SET_NULL, blank=True, null=True, related_name="suggestions")
 
     message = models.TextField()
