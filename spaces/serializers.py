@@ -84,6 +84,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.preferred_categories.all()]
 
     def create(self, validated_data):
+        validated_data.pop("category_name", None)  # ← 추가
         equipments = validated_data.pop("equipments", [])
         preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
@@ -96,6 +97,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         return space
 
     def update(self, instance, validated_data):
+        validated_data.pop("category_name", None)  # ← 추가
         equipments = validated_data.pop("equipments", None)
         preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)

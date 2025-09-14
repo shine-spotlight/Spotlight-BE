@@ -34,6 +34,9 @@ class SpaceViewSet(viewsets.ModelViewSet):
     serializer_class = SpaceSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     permission_classes = [IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
     # 공간 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공간 생성",
