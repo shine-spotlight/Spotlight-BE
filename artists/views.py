@@ -34,7 +34,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
     queryset = Artist.objects.all()
     serializer_class = ArtistSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    # permission_classes = [IsOwnerOrReadOnlyWithAdminPass]
+    permission_classes = [IsOwnerOrReadOnlyWithAdminPass]
 
     # 아티스트 생성 (POST)
     @swagger_auto_schema(

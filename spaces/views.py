@@ -10,7 +10,7 @@ from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
 from rest_framework.exceptions import ValidationError
-
+from rest_framework.permissions import IsAuthenticated
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
     return Response({"detail": detail, "code": "invalid_param", "field": field}, status=400)
@@ -33,7 +33,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
     queryset = Space.objects.all()
     serializer_class = SpaceSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-
+    permission_classes = [IsAuthenticated]
     # 공간 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공간 생성",
