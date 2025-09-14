@@ -59,6 +59,10 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         artist = data.get("artist")
         space  = data.get("space")
 
+        # None, 빈문자열, "null", 0 등은 모두 False로 간주
+        artist = artist if artist not in [None, "", "null", 0, "0"] else None
+        space = space if space not in [None, "", "null", 0, "0"] else None
+
         if artist and space:
             return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
 
@@ -430,4 +434,4 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 target_link=f"/api/v1/suggestions/{sugg.id}/"
             )
 
-        return Response(self.get_serializer(sugg).data, status=200)
+        return Response(self.get_serializer(sugg).data,
