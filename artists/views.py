@@ -58,99 +58,99 @@ class ArtistViewSet(viewsets.ModelViewSet):
 
     # ✅ 아티스트 정보 입력/수정 통합
     # POST /api/v1/artists/info/
-    @swagger_auto_schema(
-        operation_summary="아티스트 정보 입력/수정",
-        operation_description="아티스트가 자신의 프로필 정보를 입력 또는 수정합니다.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='이름'),
-                'bio': openapi.Schema(type=openapi.TYPE_STRING, description='소개'),
-                'number_of_members': openapi.Schema(type=openapi.TYPE_INTEGER, description='멤버 수'),
-                'category_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='카테고리 ID'),
-                'custom_category': openapi.Schema(type=openapi.TYPE_STRING, description='직접입력 카테고리'),
-                'region': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='지역'),
-                'profile_image': openapi.Schema(type=openapi.TYPE_STRING, format='binary', description='프로필 이미지'),
-                'profile_image_url': openapi.Schema(type=openapi.TYPE_STRING, description='프로필 이미지 URL'),
-                'portfolio_links': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='포트폴리오 링크'),
-                'desired_pay': openapi.Schema(type=openapi.TYPE_INTEGER, description='희망 페이'),
-                'is_free_allowed': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='무료 허용 여부'),
-                'equipment_category_ids': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), description='필요 장비 카테고리 ID 배열'),
-                'custom_equipment_categories': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='직접입력 장비 카테고리'),
-            },
-        ),
-        responses={200: ArtistSerializer},
-        tags=["Artist"]
-    )
-    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser], url_path="info")
-    @transaction.atomic
-    def set_info(self, request):
-        artist, _ = Artist.objects.get_or_create(user=request.user)
-        try:
-            artist = Artist.objects.get_or_create(user=request.user)
-        except Artist.DoesNotExist:
-            return Response(
-                {"detail": "아티스트 프로필이 없습니다."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+    # @swagger_auto_schema(
+    #     operation_summary="아티스트 정보 입력/수정",
+    #     operation_description="아티스트가 자신의 프로필 정보를 입력 또는 수정합니다.",
+    #     request_body=openapi.Schema(
+    #         type=openapi.TYPE_OBJECT,
+    #         properties={
+    #             'name': openapi.Schema(type=openapi.TYPE_STRING, description='이름'),
+    #             'bio': openapi.Schema(type=openapi.TYPE_STRING, description='소개'),
+    #             'number_of_members': openapi.Schema(type=openapi.TYPE_INTEGER, description='멤버 수'),
+    #             'category_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='카테고리 ID'),
+    #             'custom_category': openapi.Schema(type=openapi.TYPE_STRING, description='직접입력 카테고리'),
+    #             'region': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='지역'),
+    #             'profile_image': openapi.Schema(type=openapi.TYPE_STRING, format='binary', description='프로필 이미지'),
+    #             'profile_image_url': openapi.Schema(type=openapi.TYPE_STRING, description='프로필 이미지 URL'),
+    #             'portfolio_links': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='포트폴리오 링크'),
+    #             'desired_pay': openapi.Schema(type=openapi.TYPE_INTEGER, description='희망 페이'),
+    #             'is_free_allowed': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='무료 허용 여부'),
+    #             'equipment_category_ids': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), description='필요 장비 카테고리 ID 배열'),
+    #             'custom_equipment_categories': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING), description='직접입력 장비 카테고리'),
+    #         },
+    #     ),
+    #     responses={200: ArtistSerializer},
+    #     tags=["Artist"]
+    # )
+    # @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser], url_path="info")
+    # @transaction.atomic
+    # def set_info(self, request):
+    #     artist, _ = Artist.objects.get_or_create(user=request.user)
+    #     try:
+    #         artist = Artist.objects.get_or_create(user=request.user)
+    #     except Artist.DoesNotExist:
+    #         return Response(
+    #             {"detail": "아티스트 프로필이 없습니다."},
+    #             status=status.HTTP_404_NOT_FOUND,
+    #         )
 
-        payload = {}
+    #     payload = {}
 
-        # 기본 정보
-        for field in ["name", "bio", "number_of_members", "category_id", "custom_category"]:
-            if field in request.data:
-                payload[field] = request.data.get(field)
+    #     # 기본 정보
+    #     for field in ["name", "bio", "number_of_members", "category_id", "custom_category"]:
+    #         if field in request.data:
+    #             payload[field] = request.data.get(field)
 
-        # 지역
-        if "region" in request.data:
-            payload["region"] = _norm_to_list(request.data.get("region"))
+    #     # 지역
+    #     if "region" in request.data:
+    #         payload["region"] = _norm_to_list(request.data.get("region"))
 
-        # 프로필
-        if "profile_image" in request.FILES:
-            payload["profile_image"] = request.FILES["profile_image"]
-        if "profile_image_url" in request.data:
-            payload["profile_image_url"] = request.data.get("profile_image_url")
-        if "portfolio_links" in request.data:
-            payload["portfolio_links"] = _norm_to_list(request.data.get("portfolio_links"))
+    #     # 프로필
+    #     if "profile_image" in request.FILES:
+    #         payload["profile_image"] = request.FILES["profile_image"]
+    #     if "profile_image_url" in request.data:
+    #         payload["profile_image_url"] = request.data.get("profile_image_url")
+    #     if "portfolio_links" in request.data:
+    #         payload["portfolio_links"] = _norm_to_list(request.data.get("portfolio_links"))
 
-        # 조건
-        for field in ["desired_pay", "is_free_allowed"]:
-            if field in request.data:
-                payload[field] = request.data.get(field)
+    #     # 조건
+    #     for field in ["desired_pay", "is_free_allowed"]:
+    #         if field in request.data:
+    #             payload[field] = request.data.get(field)
 
-        # 필요 장비 (선택 or 직접입력)
-        ids = request.data.get("equipment_category_ids")
-        customs = _norm_to_list(request.data.get("custom_equipment_categories"))
-        if ids or customs:
-            to_set_ids = []
-            if ids:
-                if not isinstance(ids, (list, tuple)):
-                    return bad_request("equipment_category_ids는 배열이어야 합니다", "equipment_category_ids")
-                exists = list(EquipmentCategory.objects.filter(id__in=ids).values_list("id", flat=True))
-                missing = set(ids) - set(exists)
-                if missing:
-                    return bad_request(f"유효하지 않은 id: {sorted(list(missing))}", "equipment_category_ids")
-                to_set_ids.extend(exists)
-            if not ids and customs:
-                for name in customs:
-                    norm = _norm_name(name)
-                    if not norm:
-                        continue
-                    obj, _ = EquipmentCategory.objects.get_or_create(name=norm)
-                    to_set_ids.append(obj.id)
+    #     # 필요 장비 (선택 or 직접입력)
+    #     ids = request.data.get("equipment_category_ids")
+    #     customs = _norm_to_list(request.data.get("custom_equipment_categories"))
+    #     if ids or customs:
+    #         to_set_ids = []
+    #         if ids:
+    #             if not isinstance(ids, (list, tuple)):
+    #                 return bad_request("equipment_category_ids는 배열이어야 합니다", "equipment_category_ids")
+    #             exists = list(EquipmentCategory.objects.filter(id__in=ids).values_list("id", flat=True))
+    #             missing = set(ids) - set(exists)
+    #             if missing:
+    #                 return bad_request(f"유효하지 않은 id: {sorted(list(missing))}", "equipment_category_ids")
+    #             to_set_ids.extend(exists)
+    #         if not ids and customs:
+    #             for name in customs:
+    #                 norm = _norm_name(name)
+    #                 if not norm:
+    #                     continue
+    #                 obj, _ = EquipmentCategory.objects.get_or_create(name=norm)
+    #                 to_set_ids.append(obj.id)
 
-            ArtistEquipment.objects.filter(artist=artist).delete()
-            categories = EquipmentCategory.objects.filter(id__in=to_set_ids)
-            ArtistEquipment.objects.bulk_create(
-                [ArtistEquipment(artist=artist, category=cat) for cat in categories]
-            )
+    #         ArtistEquipment.objects.filter(artist=artist).delete()
+    #         categories = EquipmentCategory.objects.filter(id__in=to_set_ids)
+    #         ArtistEquipment.objects.bulk_create(
+    #             [ArtistEquipment(artist=artist, category=cat) for cat in categories]
+    #         )
 
-        # 최종 저장
-        ser = ArtistSerializer(artist, data=payload, partial=True)
-        if ser.is_valid():
-            ser.save()
-            return Response(ser.data, status=200)
-        return bad_request(str(ser.errors), "info")
+    #     # 최종 저장
+    #     ser = ArtistSerializer(artist, data=payload, partial=True)
+    #     if ser.is_valid():
+    #         ser.save()
+    #         return Response(ser.data, status=200)
+    #     return bad_request(str(ser.errors), "info")
 
     # ✅ 필터링은 그대로 유지
     # GET /api/v1/artists/filter/?region=서울&category=1&pay_min=100000&pay_max=300000
