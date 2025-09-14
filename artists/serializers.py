@@ -53,4 +53,9 @@ class ArtistSerializer(serializers.ModelSerializer):
             attrs["category"] = category
         elif self.instance and not attrs.get("category"):
             attrs["category"] = self.instance.category  # 기존 값 유지
+        if self.instance:
+            for field in ['name', 'number_of_members']:
+                if field not in attrs and hasattr(self.instance, field):
+                    attrs[field] = getattr(self.instance, field)
+    
         return attrs
