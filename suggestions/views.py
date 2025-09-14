@@ -56,28 +56,28 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         body에서 receiver를 결정 (artist 또는 space 중 정확히 하나만 허용)
         반환: ("artist", Artist) or ("space", Space) or (None, None, 에러응답)
         """
-        artist_id = data.get("artist_id")
-        space_id  = data.get("space_id")
+        artist = data.get("artist")
+        space  = data.get("space")
 
-        if artist_id and space_id:
+        if artist and space:
             return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
 
-        if not artist_id and not space_id:
+        if not artist and not space:
             return None, None, bad_request("receiver가 없습니다. artist 또는 space 중 하나는 필수입니다.", "receiver")
 
-        if artist_id:
+        if artist:
             try:
-                artist = Artist.objects.get(pk=artist_id)
+                artist_obj = Artist.objects.get(pk=artist)
             except Artist.DoesNotExist:
                 return None, None, bad_request("존재하지 않는 artist 입니다.", "artist")
-            return "artist", artist, None
+            return "artist", artist_obj, None
 
-        if space_id:
+        if space:
             try:
-                space = Space.objects.get(pk=space_id)
+                space_obj = Space.objects.get(pk=space)
             except Space.DoesNotExist:
                 return None, None, bad_request("존재하지 않는 space 입니다.", "space")
-            return "space", space, None
+            return "space", space_obj, None
 
         # 방어적
         return None, None, bad_request("receiver를 판별할 수 없습니다.", "receiver")
