@@ -28,6 +28,62 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     queryset = Suggestion.objects.all().order_by("-created_at")
     serializer_class = SuggestionSerializer
     permission_classes = [IsAuthenticated]
+    from rest_framework.decorators import action
+
+class SuggestionViewSet(viewsets.ModelViewSet):
+    # ... 기존 코드 ...
+
+    @action(detail=False, methods=["get"], url_path="received")
+    def received(self, request):
+        """
+        받은 제안함: 내 artist/space 프로필 기준으로 받은 제안만 반환
+        """
+        user = request.user
+        role = getattr(user, "role", None)
+        if role == "artist":
+            my_artist = self._get_my_artist(user)
+            if not my_artist:
+                return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
+            qs = self.queryset.filter(space__isnull=False, artist=my_artist)
+        elif role == "space":
+            my_space = self._get_my_space(user)
+            if not my_space:
+                return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
+            qs = self.queryset.filter(artist__isnull=False, space=my_space)
+        else:
+            return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
+
+        page = self.paginate_queryset(qs)
+        ser = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(ser.data)
+        return Response(ser.data, status=200)
+
+    @action(detail=False, methods=["get"], url_path="sent")
+    def sent(self, request):
+        """
+        보낸 제안함: 내 artist/space 프로필 기준으로 보낸 제안만 반환
+        """
+        user = request.user
+        role = getattr(user, "role", None)
+        if role == "artist":
+            my_artist = self._get_my_artist(user)
+            if not my_artist:
+                return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
+            qs = self.queryset.filter(artist=my_artist)
+        elif role == "space":
+            my_space = self._get_my_space(user)
+            if not my_space:
+                return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
+            qs = self.queryset.filter(space=my_space)
+        else:
+            return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
+
+        page = self.paginate_queryset(qs)
+        ser = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(ser.data)
+        return Response(ser.data, status=200)
 
     def _get_my_artist(self, user):
         try:
