@@ -4,52 +4,63 @@ from artists.models import Artist
 from spaces.models import Space
 
 class SuggestionSerializer(serializers.ModelSerializer):
-    # 상대 id만 받기 위한 필드 (둘 중 하나만 허용)
-    artist_id = serializers.PrimaryKeyRelatedField(
-        queryset=Artist.objects.all(), source="artist", write_only=True, required=False, allow_null=True
+    # 입력: id만 받음 (뷰에서 data["artist"], data["space"]로 세팅)
+    artist = serializers.PrimaryKeyRelatedField(
+        queryset=Artist.objects.all(), write_only=True, required=False, allow_null=True
     )
-    space_id = serializers.PrimaryKeyRelatedField(
-        queryset=Space.objects.all(), source="space", write_only=True, required=False, allow_null=True
+    space = serializers.PrimaryKeyRelatedField(
+        queryset=Space.objects.all(), write_only=True, required=False, allow_null=True
     )
-
-    # 수락 후에만 공개되는 상대방 연락처
+    # 응답: 객체 정보도 제공
+    artist_obj = serializers.SerializerMethodField(read_only=True)
+    space_obj = serializers.SerializerMethodField(read_only=True)
     receiver_phone = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Suggestion
         fields = [
             "id",
-            "sender_type",  # read_only
-            "artist", "artist_id",
-            "space", "space_id",
+            "sender_type",
+            "artist", "space",
+            "artist_obj", "space_obj",
             "posting",
             "message",
             "is_free_allowed",
             "is_performed_confirmed",
             "is_accepted",
+            "is_read",
             "receiver_phone",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
-            "id",
-            "sender_type",
-            "artist",
-            "space",
-            "receiver_phone",
-            "created_at",
-            "updated_at",
+            "id", "sender_type", "artist_obj", "space_obj", "is_read", "receiver_phone", "created_at", "updated_at"
         ]
 
+    def get_artist_obj(self, obj):
+        if obj.artist:
+            return {
+                "id": obj.artist.id,
+                "name": getattr(obj.artist, "name", None)
+            }
+        return None
+
+    def get_space_obj(self, obj):
+        if obj.space:
+            return {
+                "id": obj.space.id,
+                "place_name": getattr(obj.space, "place_name", None)
+            }
+        return None
+
     def validate(self, attrs):
-        # artist, space 중 하나만 필수, 둘 다 있거나 둘 다 없으면 에러
         artist = attrs.get("artist") or getattr(self.instance, "artist", None)
         space = attrs.get("space") or getattr(self.instance, "space", None)
 
         if artist and space:
-            raise serializers.ValidationError({"detail": "artist_id와 space_id 중 하나만 입력해야 합니다."})
+            raise serializers.ValidationError({"detail": "artist와 space 중 하나만 입력해야 합니다."})
         if not artist and not space:
-            raise serializers.ValidationError({"detail": "artist_id 또는 space_id 중 하나는 필수입니다."})
+            raise serializers.ValidationError({"detail": "artist 또는 space 중 하나는 필수입니다."})
 
         # 메시지 필수
         message = attrs.get("message", "").strip() or getattr(self.instance, "message", "").strip()
