@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from .models import Space
-from categories.models import Category
+from .models import Space, SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 
 def _norm_to_list(value):
@@ -43,23 +42,23 @@ class SpaceSerializer(serializers.ModelSerializer):
         return _norm_to_list(value)
 
     def validate(self, attrs):
-        # category_name → category 객체로 변환
+        # category_name → SpaceCategory 객체로 변환
         category_name = self.initial_data.get("category_name")
         if category_name:
             try:
-                category = Category.objects.get(name=category_name)
-            except Category.DoesNotExist:
+                category = SpaceCategory.objects.get(name=category_name)
+            except SpaceCategory.DoesNotExist:
                 raise serializers.ValidationError({"category_name": f"존재하지 않는 카테고리입니다: {category_name}"})
             attrs["category"] = category
         elif self.instance and not attrs.get("category"):
             attrs["category"] = self.instance.category  # 기존 값 유지
 
-        # preferred_categories → Category 객체 리스트로 변환
+        # preferred_categories → SpaceCategory 객체 리스트로 변환
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
-            categories = Category.objects.filter(name__in=preferred_categories_names)
+            categories = SpaceCategory.objects.filter(name__in=preferred_categories_names)
             if len(categories) != len(preferred_categories_names):
                 found_names = set(categories.values_list("name", flat=True))
                 not_found = set(preferred_categories_names) - found_names
@@ -105,4 +104,3 @@ class SpaceSerializer(serializers.ModelSerializer):
             )
         if preferred_categories is not None:
             space.preferred_categories.set(preferred_categories)
-        return space
