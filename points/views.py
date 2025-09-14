@@ -9,13 +9,11 @@ from rest_framework.permissions import IsAuthenticated
 from .models import PointTransaction
 from .serializers import PointTransactionSerializer
 
-
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
     if field:
         payload["field"] = field
     return Response(payload, status=400)
-
 
 def forbidden(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "permission_denied"}
@@ -23,13 +21,12 @@ def forbidden(detail: str, field: str = ""):
         payload["field"] = field
     return Response(payload, status=403)
 
-
 class PointViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         operation_summary="포인트 내역 조회",
-        operation_description="특정 사용자의 포인트 거래 내역을 조회합니다.",
+        operation_description="본인(아티스트) 또는 관리자만 포인트 거래 내역을 조회할 수 있습니다.",
         manual_parameters=[
             openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
         ],
@@ -42,6 +39,7 @@ class PointViewSet(viewsets.ViewSet):
         if not user_id:
             return bad_request("user_id는 필수입니다.", "user_id")
 
+        # 관리자(superuser)는 아무 user_id나 조회 가능, 그 외는 본인만
         if not request.user.is_superuser and str(request.user.id) != str(user_id):
             return forbidden("본인만 자신의 포인트 내역을 조회할 수 있습니다.", "user_id")
 
@@ -51,7 +49,7 @@ class PointViewSet(viewsets.ViewSet):
 
     @swagger_auto_schema(
         operation_summary="포인트 잔액 조회",
-        operation_description="특정 사용자의 포인트 잔액을 조회합니다.",
+        operation_description="본인(아티스트) 또는 관리자만 포인트 잔액을 조회할 수 있습니다.",
         manual_parameters=[
             openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
         ],
