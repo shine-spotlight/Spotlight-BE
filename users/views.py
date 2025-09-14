@@ -8,6 +8,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User
 from .serializers import UserSerializer
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 
 def bad_request(detail: str, field: str = "non_field_error", extra=None):
@@ -25,8 +27,28 @@ def forbidden(detail: str, field: str = "user_pk"):
 
 
 class UserViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.AllowAny] 
+
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    
+    @swagger_auto_schema(
+      operation_description="User",
+      manual_parameters=[
+          openapi.Parameter(
+                "code",
+                openapi.IN_QUERY,
+                description="카카오에서 redirect된 인가 code",
+                type=openapi.TYPE_STRING,
+                required=True,
+            )
+        ], 
+      responses={
+            200: openapi.Response("로그인 성공"),
+            400: "잘못된 요청",
+            502: "카카오 API 오류",
+        },
+    )
 
     # ✅ 액션별 권한 제어
     def get_permissions(self):
