@@ -4,14 +4,12 @@ from artists.models import Artist
 from spaces.models import Space
 
 class SuggestionSerializer(serializers.ModelSerializer):
-    # 입력: id만 받음 (뷰에서 data["artist"], data["space"]로 세팅)
     artist = serializers.PrimaryKeyRelatedField(
         queryset=Artist.objects.all(), write_only=True, required=False, allow_null=True
     )
     space = serializers.PrimaryKeyRelatedField(
         queryset=Space.objects.all(), write_only=True, required=False, allow_null=True
     )
-    # 응답: 객체 정보도 제공
     artist_obj = serializers.SerializerMethodField(read_only=True)
     space_obj = serializers.SerializerMethodField(read_only=True)
     receiver_phone = serializers.SerializerMethodField(read_only=True)
@@ -63,8 +61,8 @@ class SuggestionSerializer(serializers.ModelSerializer):
                 {"detail": "artist와 space는 동시에 입력할 수 없습니다."}
             )
 
-        # ✅ 여기서는 "하나도 없으면 안 된다" 체크 제거
-        #    → SuggestionViewSet.create()에서 role 기반으로 채워줌
+        # 여기서는 "하나도 없으면 안 된다" 체크 제거
+        # SuggestionViewSet.create()에서 role 기반으로 채워줌
 
         # 메시지 필수
         message = attrs.get("message", "").strip()
@@ -81,7 +79,6 @@ class SuggestionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
 
         return attrs
-
 
     def get_receiver_phone(self, obj: Suggestion):
         """
