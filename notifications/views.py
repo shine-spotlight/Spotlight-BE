@@ -36,13 +36,25 @@ class NotificationViewSet(viewsets.ModelViewSet):
         responses={200: NotificationSerializer(many=True)},
         tags=["Notification"]
     )
-    @action(detail=False, methods=["get"], url_path="list")
-    def my_list(self, request):
+    def list(self, request):
         qs = self.queryset.filter(user=request.user)   # ✅ 무조건 본인만
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
         if page is not None:
             return self.get_paginated_response(ser.data)
+        return Response(ser.data, status=200)
+    
+    @swagger_auto_schema(
+        operation_summary="알림 상세 조회",
+        operation_description="특정 알림을 조회합니다. 본인 또는 관리자만 접근할 수 있습니다.",
+        responses={200: NotificationSerializer, 403: "권한 없음", 404: "존재하지 않음"},
+        tags=["Notification"]
+    )
+    def retrieve(self, request, *args, **kwargs):
+        notif = self.get_object()
+        if not request.user.is_staff and request.user != notif.user:
+            return forbidden("본인 알림만 조회할 수 있습니다.", "notification_pk")
+        ser = self.get_serializer(notif)
         return Response(ser.data, status=200)
 
     # ✅ 알림 읽음 처리
