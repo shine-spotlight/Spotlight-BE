@@ -129,10 +129,10 @@ class AdminViewSet(viewsets.ViewSet):
         posting.delete()
         return Response(status=204)
 
-    # 포인트 내역 전체 조회
+    # 전체 유저 포인트 내역 조회
     @swagger_auto_schema(
-        operation_summary="포인트 내역 전체 조회",
-        operation_description="관리자가 전체 포인트 거래 내역을 조회합니다.",
+        operation_summary="전체 유저 포인트 내역 조회",
+        operation_description="관리자가 전체 유저의 포인트 거래 내역을 조회합니다.",
         responses={200: PointTransactionSerializer(many=True)},
         tags=["Admin"]
     )
@@ -144,9 +144,9 @@ class AdminViewSet(viewsets.ViewSet):
         qs = PointTransaction.objects.all().order_by("-created_at")
         return Response(PointTransactionSerializer(qs, many=True).data, status=200)
 
-    # 포인트 잔액 전체 조회 (유저별 목록)
+    # 전체 유저 포인트 잔액 조회 (유저별 목록)
     @swagger_auto_schema(
-        operation_summary="포인트 잔액 전체 조회",
+        operation_summary="전체 유저 포인트 잔액 조회",
         operation_description="관리자가 전체 유저의 포인트 잔액을 조회합니다.",
         responses={200: openapi.Response(
             description="유저별 포인트 잔액 목록",
@@ -217,7 +217,7 @@ class AdminViewSet(viewsets.ViewSet):
     
     # 제안 상태 변경 (관리자)
     @swagger_auto_schema(
-        operation_summary="제안 상태 변경(관리자)",
+        operation_summary="제안 상태 변경",
         operation_description="관리자가 임의로 제안의 상태(is_accepted)를 변경합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
