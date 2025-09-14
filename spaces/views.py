@@ -119,12 +119,12 @@ class SpaceViewSet(viewsets.ModelViewSet):
         info 액션에서 처리하던 장비/선호카테고리 등 복합 입력을 여기서 처리
         """
         # 선호 카테고리 (ManyToMany)
-        if "preferred_categories" in request.data:
-            preferred = request.data.get("preferred_categories")
-            if isinstance(preferred, str):
-                import json
-                preferred = json.loads(preferred)
-            space.preferred_categories.set(preferred or [])
+        # if "preferred_categories" in request.data:
+        #     preferred = request.data.get("preferred_categories")
+        #     if isinstance(preferred, str):
+        #         import json
+        #         preferred = json.loads(preferred)
+        #     space.preferred_categories.set(preferred or [])
 
         # 보유 장비 (선택 or 직접입력)
         ids = request.data.get("equipment_category_ids")
