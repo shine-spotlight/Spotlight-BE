@@ -3,8 +3,13 @@ from django.db import models
 from users.models import User
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
+from .models import SpaceCategory  # (X) 자기 자신을 import하면 안 됨!
 
+class SpaceCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
 
+    def __str__(self):
+        return self.name
 class Space(models.Model):
     id = models.AutoField(primary_key=True)
 
@@ -18,12 +23,12 @@ class Space(models.Model):
 
     # 카테고리(필수) + 커스텀 텍스트 저장
     category = models.ForeignKey(
-        Category, 
+        SpaceCategory, 
         on_delete=models.PROTECT, 
         related_name="main_category_spaces"   # ✅ 수정
     )
     preferred_categories = models.ManyToManyField(
-        Category, 
+        SpaceCategory, 
         blank=True, 
         related_name="preferred_spaces"       # ✅ 수정
     )
@@ -89,8 +94,3 @@ class Space(models.Model):
 
     def __str__(self):
         return self.place_name
-class SpaceCategory(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-
-    def __str__(self):
-        return self.name
