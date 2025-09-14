@@ -56,9 +56,9 @@ class SuggestionSerializer(serializers.ModelSerializer):
         space = attrs.get("space", None)
 
         # 동시에 들어오면 막기
-        if artist and space:
+        if not artist or not space:
             raise serializers.ValidationError(
-                {"detail": "artist와 space는 동시에 입력할 수 없습니다."}
+                {"detail": "artist와 space중 하나는 json에 입력되어야 합니다."}
             )
 
         # 여기서는 "하나도 없으면 안 된다" 체크 제거
