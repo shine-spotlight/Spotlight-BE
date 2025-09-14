@@ -30,8 +30,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     from rest_framework.decorators import action
 
-class SuggestionViewSet(viewsets.ModelViewSet):
-    # ... 기존 코드 ...
 
     @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
