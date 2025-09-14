@@ -3,14 +3,13 @@ from .models import Suggestion
 from artists.models import Artist
 from spaces.models import Space
 
-
 class SuggestionSerializer(serializers.ModelSerializer):
-    # write: *_id, read: FK id 노출
+    # 상대 id만 받기 위한 필드 (둘 중 하나만 허용)
     artist_id = serializers.PrimaryKeyRelatedField(
-        queryset=Artist.objects.all(), source="artist", write_only=True, required=False
+        queryset=Artist.objects.all(), source="artist", write_only=True, required=False, allow_null=True
     )
     space_id = serializers.PrimaryKeyRelatedField(
-        queryset=Space.objects.all(), source="space", write_only=True, required=False
+        queryset=Space.objects.all(), source="space", write_only=True, required=False, allow_null=True
     )
 
     # 수락 후에만 공개되는 상대방 연락처
@@ -20,7 +19,7 @@ class SuggestionSerializer(serializers.ModelSerializer):
         model = Suggestion
         fields = [
             "id",
-            "sender_type",  # ✅ read_only 처리
+            "sender_type",  # read_only
             "artist", "artist_id",
             "space", "space_id",
             "posting",
@@ -43,27 +42,28 @@ class SuggestionSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        # artist, space 중 하나만 필수, 둘 다 있거나 둘 다 없으면 에러
         artist = attrs.get("artist") or getattr(self.instance, "artist", None)
         space = attrs.get("space") or getattr(self.instance, "space", None)
 
-        # 양쪽 FK 필수
-        if not artist or not space:
-            raise serializers.ValidationError({"detail": "artist_id와 space_id는 모두 필요합니다."})
-
-        # 조건부 필드 허용 범위
-        is_free_allowed = attrs.get("is_free_allowed", getattr(self.instance, "is_free_allowed", None))
-        is_performed_confirmed = attrs.get("is_performed_confirmed", getattr(self.instance, "is_performed_confirmed", None))
-
-        sender_type = getattr(self.instance, "sender_type", None)
-        if sender_type == Suggestion.SENDER_ARTIST and is_performed_confirmed is not None:
-            raise serializers.ValidationError({"is_performed_confirmed": "artist 발신에서는 허용되지 않습니다."})
-        if sender_type == Suggestion.SENDER_SPACE and is_free_allowed is not None:
-            raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
+        if artist and space:
+            raise serializers.ValidationError({"detail": "artist_id와 space_id 중 하나만 입력해야 합니다."})
+        if not artist and not space:
+            raise serializers.ValidationError({"detail": "artist_id 또는 space_id 중 하나는 필수입니다."})
 
         # 메시지 필수
         message = attrs.get("message", "").strip() or getattr(self.instance, "message", "").strip()
         if not message:
             raise serializers.ValidationError({"message": "message는 필수입니다."})
+
+        # 조건부 필드 허용 범위
+        is_free_allowed = attrs.get("is_free_allowed", getattr(self.instance, "is_free_allowed", None))
+        is_performed_confirmed = attrs.get("is_performed_confirmed", getattr(self.instance, "is_performed_confirmed", None))
+        sender_type = getattr(self.instance, "sender_type", None)
+        if sender_type == Suggestion.SENDER_ARTIST and is_performed_confirmed is not None:
+            raise serializers.ValidationError({"is_performed_confirmed": "artist 발신에서는 허용되지 않습니다."})
+        if sender_type == Suggestion.SENDER_SPACE and is_free_allowed is not None:
+            raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
 
         return attrs
 
@@ -78,7 +78,6 @@ class SuggestionSerializer(serializers.ModelSerializer):
         if not request or not request.user or not request.user.is_authenticated:
             return None
 
-        # 요청자가 아티스트 유저면 -> 공간 보유자 전화, 반대면 -> 아티스트 유저 전화
         try:
             artist_user_id = obj.artist.user_id
             space_user_id = obj.space.user_id

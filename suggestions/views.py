@@ -150,12 +150,33 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         pass
     
     @swagger_auto_schema(
-        operation_summary="제안 생성",
-        operation_description="아티스트 또는 공간이 상대에게 제안을 생성합니다.",
-        request_body=SuggestionSerializer,
-        responses={201: SuggestionSerializer, 400: "유효성 오류"},
-        tags=["Suggestion"]
-    )
+    operation_summary="제안 생성",
+    operation_description="""
+아티스트 또는 공간이 상대에게 제안을 생성합니다.
+
+- 토큰의 role(artist/space)로 본인 프로필이 자동 매핑됩니다.
+- 상대방의 id만 body에 보내면 됩니다.
+  - 아티스트 → 공간: `{ "space": <상대 공간 id>, "message": "..." }`
+  - 공간 → 아티스트: `{ "artist": <상대 아티스트 id>, "message": "..." }`
+- artist와 space를 **둘 다 보내면 에러**, **아무것도 없으면 에러**  
+- 하나만 보내면 정상적으로 생성됩니다.
+""",
+    request_body=SuggestionSerializer,
+    responses={
+        201: SuggestionSerializer,
+        400: openapi.Response(
+            description="유효성 오류",
+            examples={
+                "application/json": {
+                    "detail": "artist와 space 중 하나만 지정해야 합니다.",
+                    "code": "invalid_param",
+                    "field": "receiver"
+                }
+            }
+        )
+    },
+    tags=["Suggestion"]
+)
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
