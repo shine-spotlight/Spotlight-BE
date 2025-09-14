@@ -89,3 +89,5 @@ class ArtistSerializer(serializers.ModelSerializer):
                 EquipmentCategory.objects.filter(name__in=equipments)
             )
         return artist
+    
+    #배포용
