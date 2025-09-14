@@ -9,9 +9,6 @@ class PostingSerializer(serializers.ModelSerializer):
         queryset=Space.objects.all(), source="space", write_only=True, required=False
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
-
-    # ✅ categories: 출력은 name 배열, 입력은 name 배열
-    categories = serializers.SerializerMethodField(read_only=True)
     category_names = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -21,8 +18,7 @@ class PostingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "space", "space_id",
             "title", "description",
-            "posting_image", "posting_image_url",
-            "categories", "category_names",
+            "posting_image", "posting_image_url", "category_names",
             "price_type", "price_amount", "date", "created_at",
         ]
         read_only_fields = ["id", "created_at", "space", "categories"]
@@ -59,4 +55,4 @@ class PostingSerializer(serializers.ModelSerializer):
         return attrs
 
     def get_categories(self, obj):
-        return [c.name for c in obj.categories.all()]  # ✅ 문자열 name 반환
+        return [c.name for c in obj.categories.all()]  

@@ -32,7 +32,6 @@ class Posting(models.Model):
 
     # 공연 예정 날짜
     date = models.DateField()
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):
