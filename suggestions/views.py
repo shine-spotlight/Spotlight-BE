@@ -12,7 +12,6 @@ from artists.models import Artist
 from spaces.models import Space
 from notifications.models import Notification
 
-
 # 공통 에러 포맷
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
@@ -20,13 +19,11 @@ def bad_request(detail: str, field: str = ""):
         payload["field"] = field
     return Response(payload, status=400)
 
-
 def forbidden(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "permission_denied"}
     if field:
         payload["field"] = field
     return Response(payload, status=403)
-
 
 class SuggestionViewSet(viewsets.ModelViewSet):
     """
@@ -93,7 +90,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
     # ----- 생성 -----
-    
     @swagger_auto_schema(
         operation_summary="제안 목록 조회",
         operation_description="현재 로그인한 사용자의 제안 목록을 조회합니다.",
@@ -148,10 +144,10 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(auto_schema=None) 
     def update(self, request, *args, **kwargs):
         pass
-    
+
     @swagger_auto_schema(
-    operation_summary="제안 생성",
-    operation_description="""
+        operation_summary="제안 생성",
+        operation_description="""
 아티스트 또는 공간이 상대에게 제안을 생성합니다.
 
 - 토큰의 role(artist/space)로 본인 프로필이 자동 매핑됩니다.
@@ -161,22 +157,22 @@ class SuggestionViewSet(viewsets.ModelViewSet):
 - artist와 space를 **둘 다 보내면 에러**, **아무것도 없으면 에러**  
 - 하나만 보내면 정상적으로 생성됩니다.
 """,
-    request_body=SuggestionSerializer,
-    responses={
-        201: SuggestionSerializer,
-        400: openapi.Response(
-            description="유효성 오류",
-            examples={
-                "application/json": {
-                    "detail": "artist와 space 중 하나만 지정해야 합니다.",
-                    "code": "invalid_param",
-                    "field": "receiver"
+        request_body=SuggestionSerializer,
+        responses={
+            201: SuggestionSerializer,
+            400: openapi.Response(
+                description="유효성 오류",
+                examples={
+                    "application/json": {
+                        "detail": "artist와 space 중 하나만 지정해야 합니다.",
+                        "code": "invalid_param",
+                        "field": "receiver"
+                    }
                 }
-            }
-        )
-    },
-    tags=["Suggestion"]
-)
+            )
+        },
+        tags=["Suggestion"]
+    )
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
@@ -230,6 +226,10 @@ class SuggestionViewSet(viewsets.ModelViewSet):
 
         ser = self.get_serializer(data=data, context={"request": request})
         if not ser.is_valid():
+            # 에러 메시지 커스텀
+            errors = ser.errors
+            if "detail" in errors and "필수" in errors["detail"][0]:
+                return bad_request("상대 id가 없습니다. artist 또는 space 중 하나는 필수입니다.", "receiver")
             return bad_request(str(ser.errors))
 
         instance: Suggestion = ser.save()
@@ -430,4 +430,4 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 target_link=f"/api/v1/suggestions/{sugg.id}/"
             )
 
-        return Response(self.get_serializer(sugg).data, status=200)
+        return Response(self.get_serializer(sugg).data,
