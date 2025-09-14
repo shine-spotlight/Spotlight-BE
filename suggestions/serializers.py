@@ -54,6 +54,10 @@ class SuggestionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         # 조회/리스트 등에서는 validate를 건너뜀
         request = self.context.get("request", None)
+        if request and request.method == "PATCH":
+            message = attrs.get("message", None)
+            # PATCH에서는 artist, space가 없어도 됨 (부분 수정)
+            return attrs
         if request and request.method not in ("POST", "PUT", "PATCH"):
             return attrs
 

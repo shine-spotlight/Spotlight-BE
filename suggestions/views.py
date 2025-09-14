@@ -224,3 +224,57 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+    @action(detail=True, methods=["patch"], url_path="accept")
+    @transaction.atomic
+    def accept(self, request, pk=None):
+        """
+        제안 수락 처리: 제안의 수신자만 수락 가능
+        """
+        suggestion = self.get_object()
+        # 수신자 판별
+        if suggestion.sender_type == Suggestion.SENDER_ARTIST:
+            receiver_user_id = suggestion.space.user_id
+        else:
+            receiver_user_id = suggestion.artist.user_id
+
+        if not request.user.is_superuser and request.user.id != receiver_user_id:
+            return forbidden("제안 수신자만 수락할 수 있습니다.", "accept")
+
+        if suggestion.is_accepted is not True:
+            suggestion.is_accepted = True
+            suggestion.save(update_fields=["is_accepted", "updated_at"])
+
+            # 상대에게 알림
+            if suggestion.sender_type == Suggestion.SENDER_ARTIST:
+                target_user = suggestion.artist.user
+            else:
+                target_user = suggestion.space.user
+            self._notify(
+                user=target_user,
+                content=f"'{suggestion}' 제안이 수락되었습니다.",
+                target_link=f"/api/v1/suggestions/{suggestion.id}/"
+            )
+
+        return Response(self.get_serializer(suggestion).data, status=200)
+
+    @action(detail=True, methods=["post"], url_path="read")
+    @transaction.atomic
+    def read(self, request, pk=None):
+        """
+        제안 읽음 처리: 제안의 수신자만 읽음 처리 가능
+        """
+        suggestion = self.get_object()
+        # 수신자 판별
+        if suggestion.sender_type == Suggestion.SENDER_ARTIST:
+            receiver_user_id = suggestion.space.user_id
+        else:
+            receiver_user_id = suggestion.artist.user_id
+
+        if not request.user.is_superuser and request.user.id != receiver_user_id:
+            return forbidden("제안 수신자만 읽음 처리할 수 있습니다.", "read")
+
+        if not suggestion.is_read:
+            suggestion.is_read = True
+            suggestion.save(update_fields=["is_read", "updated_at"])
+
+        return Response({"id": suggestion.id, "is_read": True}, status=200)
