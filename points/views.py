@@ -28,7 +28,7 @@ class PointViewSet(viewsets.ViewSet):
         operation_summary="포인트 내역 조회",
         operation_description="본인(아티스트) 또는 관리자만 포인트 거래 내역을 조회할 수 있습니다.",
         manual_parameters=[
-            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=True),
+            openapi.Parameter('user_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='유저 ID', required=False),
         ],
         responses={200: PointTransactionSerializer(many=True)},
         tags=["Point"]
@@ -36,8 +36,9 @@ class PointViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="history")
     def history(self, request):
         user_id = request.query_params.get("user_id")
+        # user_id가 없으면 토큰의 본인 id 사용
         if not user_id:
-            return bad_request("user_id는 필수입니다.", "user_id")
+            user_id = request.user.id
 
         # 관리자(superuser)는 아무 user_id나 조회 가능, 그 외는 본인만
         if not request.user.is_superuser and str(request.user.id) != str(user_id):
@@ -60,7 +61,7 @@ class PointViewSet(viewsets.ViewSet):
     def balance(self, request):
         user_id = request.query_params.get("user_id")
         if not user_id:
-            return bad_request("user_id는 필수입니다.", "user_id")
+            user_id = request.user.id
 
         if not request.user.is_superuser and str(request.user.id) != str(user_id):
             return forbidden("본인만 자신의 포인트 잔액을 조회할 수 있습니다.", "user_id")
