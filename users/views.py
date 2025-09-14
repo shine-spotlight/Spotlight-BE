@@ -130,14 +130,13 @@ class UserViewSet(viewsets.ModelViewSet):
         responses={200: UserSerializer},
         tags=["User"]
     )
-    @action(detail=False, methods=["get"], url_path="me")
-    def me(self, request):
+    def retrieve(self, request):
         return Response(UserSerializer(request.user).data)
 
-    # ✅ 내 role 수정
+    # ✅ 내 role 등록
     @swagger_auto_schema(
-        operation_summary="내 role 수정",
-        operation_description="현재 로그인한 사용자의 role(artist/space)을 수정합니다.",
+        operation_summary="내 role 등록",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -163,8 +162,8 @@ class UserViewSet(viewsets.ModelViewSet):
 
     # ✅ 내 전화번호 수정
     @swagger_auto_schema(
-        operation_summary="내 전화번호 수정",
-        operation_description="현재 로그인한 사용자의 전화번호를 수정합니다.",
+        operation_summary="내 전화번호 등록",
+        operation_description="현재 로그인한 사용자의 전화번호를 등록합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -183,3 +182,51 @@ class UserViewSet(viewsets.ModelViewSet):
         request.user.phone_number = phone_number
         request.user.save()
         return Response(UserSerializer(request.user).data)
+    
+    @swagger_auto_schema(
+        operation_summary="유저 생성",
+        operation_description="새로운 유저를 생성합니다.",
+        request_body=UserSerializer,
+        responses={201: UserSerializer, 400: "유효성 오류"},
+        tags=["User"]
+    )
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        if ser.is_valid():
+            ser.save()
+            return Response(ser.data, status=status.HTTP_201_CREATED)
+        return bad_request(str(ser.errors))
+
+    @swagger_auto_schema(
+        operation_summary="유저 정보 부분 수정",
+        operation_description="특정 유저 정보를 부분 수정합니다.",
+        request_body=UserSerializer,
+        responses={200: UserSerializer, 400: "유효성 오류"},
+        tags=["User"]
+    )
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ser = self.get_serializer(instance, data=request.data, partial=True)
+        if ser.is_valid():
+            ser.save()
+            return Response(ser.data, status=200)
+        return bad_request(str(ser.errors))
+
+    @swagger_auto_schema(
+        operation_summary="유저 삭제",
+        operation_description="특정 유저를 삭제합니다.",
+        responses={204: "삭제 성공", 403: "권한 없음"},
+        tags=["User"]
+    )
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @swagger_auto_schema(auto_schema=None) 
+    def list(self, request, *args, **kwargs):
+        pass
+    
+    @swagger_auto_schema(auto_schema=None) 
+    def update(self, request, *args, **kwargs):
+        pass

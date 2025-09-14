@@ -64,8 +64,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         responses={200: openapi.Response(description="읽음 처리 결과", examples={"application/json": {"id": 1, "is_read": True}})},
         tags=["Notification"]
     )
-    @action(detail=True, methods=["patch"], url_path="read")
-    def mark_read(self, request, pk=None):
+    def partial_update(self, request, pk=None):
         notif = self.get_object()
         if not request.user.is_staff and request.user != notif.user:
             return forbidden("본인 알림만 읽음 처리할 수 있습니다.", "notification_pk")
@@ -87,22 +86,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
             return forbidden("본인 알림만 삭제할 수 있습니다.", "notification_pk")
         notif.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    # ✅ 관리자만 알림 발송 가능
-    @swagger_auto_schema(
-        operation_summary="알림 발송",
-        operation_description="관리자가 특정 사용자에게 알림을 발송합니다.",
-        request_body=NotificationSerializer,
-        responses={201: NotificationSerializer, 403: "권한 없음", 400: "유효성 오류"},
-        tags=["Notification"]
-    )
+    
+    @swagger_auto_schema(auto_schema=None) 
     def create(self, request, *args, **kwargs):
-        if not request.user.is_staff:
-            return forbidden("관리자만 알림을 발송할 수 있습니다.", "admin")
-
-        ser = self.get_serializer(data=request.data)
-        if not ser.is_valid():
-            return bad_request(str(ser.errors))
-
-        notif = ser.save(user_id=request.data.get("user"))
-        return Response(self.get_serializer(notif).data, status=status.HTTP_201_CREATED)
+        pass

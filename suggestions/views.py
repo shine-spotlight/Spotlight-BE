@@ -93,6 +93,62 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
     # ----- 생성 -----
+    
+    @swagger_auto_schema(
+        operation_summary="제안 목록 조회",
+        operation_description="현재 로그인한 사용자의 제안 목록을 조회합니다.",
+        responses={200: SuggestionSerializer(many=True)},
+        tags=["Suggestion"]
+    )
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        ser = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(ser.data)
+        return Response(ser.data, status=200)
+
+    @swagger_auto_schema(
+        operation_summary="제안 상세 조회",
+        operation_description="특정 제안을 상세 조회합니다.",
+        responses={200: SuggestionSerializer, 404: "존재하지 않음"},
+        tags=["Suggestion"]
+    )
+    def retrieve(self, request, *args, **kwargs):
+        suggestion = self.get_object()
+        ser = self.get_serializer(suggestion)
+        return Response(ser.data, status=200)
+
+    @swagger_auto_schema(
+        operation_summary="제안 부분 수정",
+        operation_description="특정 제안을 부분 수정합니다.",
+        request_body=SuggestionSerializer,
+        responses={200: SuggestionSerializer, 400: "유효성 오류"},
+        tags=["Suggestion"]
+    )
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ser = self.get_serializer(instance, data=request.data, partial=True)
+        if ser.is_valid():
+            ser.save()
+            return Response(ser.data, status=200)
+        return bad_request(str(ser.errors))
+
+    @swagger_auto_schema(
+        operation_summary="제안 삭제",
+        operation_description="특정 제안을 삭제합니다.",
+        responses={204: "삭제 성공", 403: "권한 없음"},
+        tags=["Suggestion"]
+    )
+    def destroy(self, request, *args, **kwargs):
+        suggestion = self.get_object()
+        suggestion.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @swagger_auto_schema(auto_schema=None) 
+    def update(self, request, *args, **kwargs):
+        pass
+    
     @swagger_auto_schema(
         operation_summary="제안 생성",
         operation_description="아티스트 또는 공간이 상대에게 제안을 생성합니다.",

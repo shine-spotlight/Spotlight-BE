@@ -139,6 +139,17 @@ class PostingViewSet(viewsets.ModelViewSet):
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
+    
+    @swagger_auto_schema(
+        operation_summary="공연 공고 상세 조회",
+        operation_description="특정 공연 공고를 상세 조회합니다.",
+        responses={200: PostingSerializer, 404: "존재하지 않음"},
+        tags=["Posting"]
+    )
+    def retrieve(self, request, *args, **kwargs):
+        posting = self.get_object()
+        ser = self.get_serializer(posting)
+        return Response(ser.data, status=200)
 
     # 공고 기반 제안 전송 (아티스트 → 공간)
     # POST /api/v1/postings/{posting_pk}/suggestion/
@@ -200,3 +211,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         sugg = Suggestion.objects.create(**sugg_kwargs)
 
         return Response({"suggestion_id": sugg.id, "created": True}, status=201)
+    
+    @swagger_auto_schema(auto_schema=None) 
+    def partial_update(self, request, *args, **kwargs):
+        pass
