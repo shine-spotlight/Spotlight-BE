@@ -56,6 +56,10 @@ class SuggestionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         artist = attrs.get("artist")
         space = attrs.get("space")
+        if artist in ["", 0, "0", "null"]:
+            artist = None
+        if space in ["", 0, "0", "null"]:
+            space = None
     # partial update일 때만 instance와 합침
         if self.instance:
             if artist is None:
