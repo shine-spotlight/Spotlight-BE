@@ -18,6 +18,9 @@ class ArtistSerializer(serializers.ModelSerializer):
         child=serializers.CharField(), write_only=True, required=False
     )
     categories_display = serializers.SerializerMethodField(read_only=True)
+    equipments = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
+    )
 
     class Meta:
         model = Artist
