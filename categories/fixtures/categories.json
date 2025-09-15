@@ -9,4 +9,3 @@
   {"model": "categories.category", "pk": 8, "fields": {"name": "스탠드업코미디"}},
   {"model": "categories.category", "pk": 9, "fields": {"name": "토크"}}
 ]
-

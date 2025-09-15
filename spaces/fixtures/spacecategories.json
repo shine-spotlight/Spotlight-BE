@@ -1,12 +1,12 @@
 [
-  {"model": "spaces.spacecategory", "pk": 1, "fields": {"name": "카페"}},
-  {"model": "spaces.spacecategory", "pk": 2, "fields": {"name": "식당"}},
-  {"model": "spaces.spacecategory", "pk": 3, "fields": {"name": "스튜디오"}},
-  {"model": "spaces.spacecategory", "pk": 4, "fields": {"name": "일반 상점"}},
-  {"model": "spaces.spacecategory", "pk": 5, "fields": {"name": "소극장"}},
-  {"model": "spaces.spacecategory", "pk": 6, "fields": {"name": "갤러리"}},
-  {"model": "spaces.spacecategory", "pk": 7, "fields": {"name": "펍 / 바"}},
-  {"model": "spaces.spacecategory", "pk": 8, "fields": {"name": "회사"}},
-  {"model": "spaces.spacecategory", "pk": 9, "fields": {"name": "공공기관"}},
-  {"model": "spaces.spacecategory", "pk": 10, "fields": {"name": "직접 입력"}}
+  {"model": "spacecategories.spacecategory", "pk": 1, "fields": {"name": "카페"}},
+  {"model": "spacecategories.spacecategory", "pk": 2, "fields": {"name": "식당"}},
+  {"model": "spacecategories.spacecategory", "pk": 3, "fields": {"name": "스튜디오"}},
+  {"model": "spacecategories.spacecategory", "pk": 4, "fields": {"name": "일반상점"}},
+  {"model": "spacecategories.spacecategory", "pk": 5, "fields": {"name": "소극장"}},
+  {"model": "spacecategories.spacecategory", "pk": 6, "fields": {"name": "갤러리"}},
+  {"model": "spacecategories.spacecategory", "pk": 7, "fields": {"name": "펍/바"}},
+  {"model": "spacecategories.spacecategory", "pk": 8, "fields": {"name": "학교"}},
+  {"model": "spacecategories.spacecategory", "pk": 9, "fields": {"name": "공공기관"}},
+  {"model": "spacecategories.spacecategory", "pk": 10, "fields": {"name": "회사"}}
 ]
