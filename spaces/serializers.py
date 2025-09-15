@@ -13,13 +13,6 @@ def _norm_to_list(value):
 
 class SpaceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    class SpaceSerializer(serializers.ModelSerializer):
-        # ...existing fields...
-        preferred_categories_display = serializers.SerializerMethodField(read_only=True)
-        # ...existing fields...
-    
-        def get_preferred_categories_display(self, obj):
-            return [c.name for c in obj.preferred_categories.all()]    # 기존 단일 category, category_name 필드 제거
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -29,6 +22,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         child=serializers.CharField(), write_only=True, required=False
     )
     equipments_display = serializers.SerializerMethodField(read_only=True)
+    preferred_categories_display = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Space
@@ -46,6 +40,12 @@ class SpaceSerializer(serializers.ModelSerializer):
 
     def get_categories_display(self, obj):
         return [c.name for c in obj.categories.all()]
+
+    def get_equipments_display(self, obj):
+        return [e.name for e in obj.equipments.all()]
+
+    def get_preferred_categories_display(self, obj):
+        return [c.name for c in obj.preferred_categories.all()]
 
     def validate_atmosphere(self, value):
         return _norm_to_list(value)
@@ -85,12 +85,6 @@ class SpaceSerializer(serializers.ModelSerializer):
                 if field not in attrs and hasattr(self.instance, field):
                     attrs[field] = getattr(self.instance, field)
         return attrs
-
-    def get_equipments_display(self, obj):
-        return [e.name for e in obj.equipments.all()]
-
-    def get_preferred_categories_display(self, obj):
-        return [c.name for c in obj.preferred_categories.all()]
 
     def create(self, validated_data):
         categories = validated_data.pop("categories", [])
