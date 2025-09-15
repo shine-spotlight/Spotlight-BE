@@ -22,6 +22,9 @@ class SpaceSerializer(serializers.ModelSerializer):
         child=serializers.CharField(), write_only=True, required=False
     )
     equipments_display = serializers.SerializerMethodField(read_only=True)
+    preferred_categories = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
+    )
     preferred_categories_display = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -63,7 +66,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
-        # preferred_categories → Category 객체 리스트로 변환
+        # preferred_categories → Category 객체 리스트로 변환 (이름 배열 허용)
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if not isinstance(preferred_categories_names, list):
