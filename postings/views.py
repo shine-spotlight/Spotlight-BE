@@ -44,9 +44,24 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         return None
 
+    # 공연 공고 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
-        operation_description="새로운 공연 공고를 등록합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="""
+새로운 공연 공고를 등록합니다. (공간 소유자 또는 관리자만 가능)
+
+**필수 필드:**
+- space_id: 공간 PK (본인 소유 공간만 가능)
+- title: 공고 제목
+- description: 공고 설명
+- categories: 카테고리 PK 배열
+- price_type: "paid" | "free" | "negotiable"
+- date: 공연 날짜
+
+**선택 필드:**
+- posting_image: 공고 이미지 파일
+- price_amount: 가격(유료일 때만)
+""",
         request_body=PostingSerializer,
         responses={201: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -64,9 +79,15 @@ class PostingViewSet(viewsets.ModelViewSet):
         posting = ser.save()
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
+    # 공연 공고 수정 (PUT)
     @swagger_auto_schema(
         operation_summary="공연 공고 수정",
-        operation_description="기존 공연 공고의 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="""
+기존 공연 공고의 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)
+
+**수정 가능한 필드:**  
+- space_id, title, description, categories, price_type, price_amount, date, posting_image
+""",
         request_body=PostingSerializer,
         responses={200: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -84,9 +105,14 @@ class PostingViewSet(viewsets.ModelViewSet):
             return Response(self.get_serializer(posting).data, status=200)
         return bad_request(str(ser.errors), "update")
 
+    # 공연 공고 삭제 (DELETE)
     @swagger_auto_schema(
         operation_summary="공연 공고 삭제",
-        operation_description="특정 공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)",
+        operation_description="""
+특정 공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)
+
+**주의:** 삭제된 데이터는 복구할 수 없습니다.
+""",
         responses={204: "삭제 성공", 403: "권한 없음"},
         tags=["Posting"]
     )
@@ -99,11 +125,26 @@ class PostingViewSet(viewsets.ModelViewSet):
         posting.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    # 공연 공고 전체 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
-        operation_description="등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to)로 조회합니다.",
+        operation_description="""
+등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to)로 조회합니다.
+
+- category: 카테고리 PK
+- price_type: "paid" | "free" | "negotiable"
+- date_from: 공연 시작일(YYYY-MM-DD)
+- date_to: 공연 종료일(YYYY-MM-DD)
+
+**응답:**  
+- space: 공간명  
+- space_address: 공간 주소  
+- categories: 카테고리 PK 배열  
+- category_names: 카테고리명 배열  
+- 기타 공고 정보
+""",
         manual_parameters=[
-            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID', required=False),
+            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 PK', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
@@ -133,9 +174,19 @@ class PostingViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
     
+    # 공연 공고 상세 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공연 공고 상세 조회",
-        operation_description="특정 공연 공고의 상세 정보를 조회합니다.",
+        operation_description="""
+특정 공연 공고의 상세 정보를 조회합니다.
+
+**포함 정보:**
+- space: 공간명
+- space_address: 공간 주소
+- categories: 카테고리 PK 배열
+- category_names: 카테고리명 배열
+- 기타 공고 정보
+""",
         responses={200: PostingSerializer, 404: "존재하지 않음"},
         tags=["Posting"]
     )
@@ -144,6 +195,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         ser = self.get_serializer(posting)
         return Response(ser.data, status=200)
 
+    # 제안 전송 (POST)
     @swagger_auto_schema(
         operation_summary="공고 기반 제안 전송",
         operation_description="""

@@ -13,12 +13,11 @@ def _norm_to_list(value):
 
 class SpaceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    category = serializers.CharField(source="category.name", read_only=True)   # 출력: 문자열
-    category_name = serializers.CharField(write_only=True, required=False)      # 입력: name 문자열
-    preferred_categories = serializers.ListField(
+    # 기존 단일 category, category_name 필드 제거
+    categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
-    preferred_categories_display = serializers.SerializerMethodField(read_only=True)
+    categories_display = serializers.SerializerMethodField(read_only=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     equipments = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
@@ -29,32 +28,36 @@ class SpaceSerializer(serializers.ModelSerializer):
         model = Space
         fields = [
             "id", "user", "place_name", "address", "postal_code", "kakao_map_link",
-            "category", "category_name", "preferred_categories", "preferred_categories_display",
+            "categories", "categories_display", "preferred_categories", "preferred_categories_display",
             "custom_category", "description", "capacity_seated", "capacity_standing",
             "business_registration_number", "atmosphere", "place_image", "place_image_url",
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
-            "phone_number", "category", "place_region"
+            "phone_number", "categories_display", "place_region"
         ]
+
+    def get_categories_display(self, obj):
+        return [c.name for c in obj.categories.all()]
 
     def validate_atmosphere(self, value):
         return _norm_to_list(value)
 
     def validate(self, attrs):
-        # category_name → SpaceCategory 객체로 변환
-        category_name = self.initial_data.get("category_name")
-        if category_name:
-            try:
-                category = SpaceCategory.objects.get(name=category_name)
-            except SpaceCategory.DoesNotExist:
-                raise serializers.ValidationError({"category_name": f"존재하지 않는 카테고리입니다: {category_name}"})
-            attrs["category"] = category
-        elif self.instance and not attrs.get("category"):
-            attrs["category"] = self.instance.category  # 기존 값 유지
+        # categories → SpaceCategory 객체 리스트로 변환
+        categories_names = self.initial_data.get("categories")
+        if categories_names is not None:
+            if not isinstance(categories_names, list):
+                raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
+            categories = SpaceCategory.objects.filter(name__in=categories_names)
+            if len(categories) != len(categories_names):
+                found_names = set(categories.values_list("name", flat=True))
+                not_found = set(categories_names) - found_names
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
+            attrs["categories"] = categories
 
-        # preferred_categories → Category 객체 리스트로 변환 (Artist와 동일)
+        # preferred_categories → Category 객체 리스트로 변환
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if not isinstance(preferred_categories_names, list):
@@ -84,10 +87,12 @@ class SpaceSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.preferred_categories.all()]
 
     def create(self, validated_data):
-        validated_data.pop("category_name", None)  # ← 추가
+        categories = validated_data.pop("categories", [])
         equipments = validated_data.pop("equipments", [])
         preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
+        if categories:
+            space.categories.set(categories)
         if equipments:
             space.equipments.set(
                 EquipmentCategory.objects.filter(name__in=equipments)
@@ -97,10 +102,12 @@ class SpaceSerializer(serializers.ModelSerializer):
         return space
 
     def update(self, instance, validated_data):
-        validated_data.pop("category_name", None)  # ← 추가
+        categories = validated_data.pop("categories", None)
         equipments = validated_data.pop("equipments", None)
         preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)
+        if categories is not None:
+            space.categories.set(categories)
         if equipments is not None:
             space.equipments.set(
                 EquipmentCategory.objects.filter(name__in=equipments)

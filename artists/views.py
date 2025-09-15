@@ -39,7 +39,37 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 생성 (POST)
     @swagger_auto_schema(
         operation_summary="아티스트 생성",
-        operation_description="아티스트 프로필을 최초로 생성합니다. 이미 프로필이 있으면 생성할 수 없습니다.",
+        operation_description="""
+아티스트 프로필을 최초로 생성합니다.
+
+**필수 필드:**
+- name: 아티스트명
+- categories: 카테고리명 배열 (예: ["음악", "무용"])
+
+**선택 필드:**
+- bio: 소개글
+- number_of_members: 팀원 수 (기본값: 1)
+- custom_category: 커스텀 카테고리
+- profile_image: 프로필 이미지 파일
+- portfolio_links: 포트폴리오 링크 배열
+- region: 활동 지역 배열
+- desired_pay: 희망 페이
+- is_free_allowed: 무료 공연 가능 여부
+
+**예시 요청 (JSON):**
+```json
+{
+  "name": "밴드A",
+  "categories": ["음악", "무용"],
+  "bio": "록밴드입니다",
+  "number_of_members": 4,
+  "portfolio_links": ["https://youtube.com/...", "https://soundcloud.com/..."],
+  "region": ["서울", "경기"],
+  "desired_pay": 100000,
+  "is_free_allowed": true
+}
+```
+""",
         tags=["Artist"]
     )
     def create(self, request, *args, **kwargs):
@@ -50,7 +80,30 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 전체 수정 (PUT)
     @swagger_auto_schema(
         operation_summary="아티스트 전체 수정",
-        operation_description="아티스트 프로필 정보를 전체 수정합니다.",
+        operation_description="""
+아티스트 프로필 정보를 전체 수정합니다.
+
+**사용 가능한 모든 필드:**
+- name, categories (배열), bio, number_of_members
+- custom_category, profile_image, portfolio_links
+- region, desired_pay, is_free_allowed
+
+**주의:** PUT 요청은 모든 필드를 다시 설정하므로, 유지하고 싶은 정보도 함께 전송해야 합니다.
+
+**예시 요청:**
+```json
+{
+  "name": "밴드A (수정됨)",
+  "categories": ["음악"],
+  "bio": "수정된 소개글",
+  "number_of_members": 5,
+  "portfolio_links": ["https://new-link.com"],
+  "region": ["서울"],
+  "desired_pay": 150000,
+  "is_free_allowed": false
+}
+```
+""",
         tags=["Artist"]
     )
     def update(self, request, *args, **kwargs):
@@ -64,7 +117,28 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 부분 수정 (PATCH)
     @swagger_auto_schema(
         operation_summary="아티스트 부분 수정",
-        operation_description="아티스트 프로필 정보를 일부 수정합니다.",
+        operation_description="""
+아티스트 프로필 정보를 일부 수정합니다.
+
+**수정하고 싶은 필드만 전송하면 됩니다:**
+- name, categories (배열), bio, number_of_members
+- custom_category, profile_image, portfolio_links
+- region, desired_pay, is_free_allowed
+
+**예시 요청 (이름만 변경):**
+```json
+{
+  "name": "새로운 아티스트명"
+}
+```
+
+**예시 요청 (카테고리만 변경):**
+```json
+{
+  "categories": ["무용", "연극"]
+}
+```
+""",
         tags=["Artist"]
     )
     def partial_update(self, request, *args, **kwargs):
@@ -78,7 +152,37 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 목록 조회 (GET)
     @swagger_auto_schema(
         operation_summary="아티스트 목록 조회",
-        operation_description="아티스트 프로필 리스트를 조회합니다.",
+        operation_description="""
+모든 아티스트 프로필 리스트를 조회합니다.
+
+**응답 정보:**
+- 페이지네이션이 적용됩니다
+- 카테고리 정보가 포함됩니다
+- 프로필 이미지 URL이 포함됩니다
+
+**응답 예시:**
+```json
+{
+  "count": 50,
+  "next": "http://api.example.com/artists/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "name": "밴드A",
+      "categories_display": ["음악", "무용"],
+      "bio": "록밴드입니다",
+      "number_of_members": 4,
+      "profile_image": "http://example.com/media/artists/profile/image.jpg",
+      "region": ["서울", "경기"],
+      "desired_pay": 100000,
+      "is_free_allowed": true,
+      "phone_number": "010-1234-5678"
+    }
+  ]
+}
+```
+""",
         tags=["Artist"]
     )
     def list(self, request, *args, **kwargs):
@@ -87,7 +191,35 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 상세 조회 (GET)
     @swagger_auto_schema(
         operation_summary="아티스트 상세 조회",
-        operation_description="특정 아티스트 프로필의 상세 정보를 조회합니다.",
+        operation_description="""
+특정 아티스트 프로필의 상세 정보를 조회합니다.
+
+**포함 정보:**
+- 기본 프로필 정보
+- 카테고리 목록 (categories_display)
+- 포트폴리오 링크들
+- 프로필 이미지 URL
+- 연락처 정보
+
+**응답 예시:**
+```json
+{
+  "id": 1,
+  "name": "밴드A",
+  "categories_display": ["음악", "무용"],
+  "bio": "록밴드입니다",
+  "number_of_members": 4,
+  "custom_category": "인디록",
+  "portfolio_links": ["https://youtube.com/...", "https://soundcloud.com/..."],
+  "profile_image": "http://example.com/media/artists/profile/image.jpg",
+  "region": ["서울", "경기"],
+  "desired_pay": 100000,
+  "is_free_allowed": true,
+  "phone_number": "010-1234-5678",
+  "created_at": "2025-09-15T12:00:00Z"
+}
+```
+""",
         tags=["Artist"]
     )
     def retrieve(self, request, *args, **kwargs):
@@ -96,7 +228,15 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 삭제 (DELETE)
     @swagger_auto_schema(
         operation_summary="아티스트 삭제",
-        operation_description="아티스트 프로필을 삭제합니다.",
+        operation_description="""
+아티스트 프로필을 삭제합니다.
+
+**권한:**
+- 본인 또는 관리자만 삭제 가능합니다
+- 프로필 이미지 파일도 서버에서 삭제됩니다
+
+**주의:** 삭제된 데이터는 복구할 수 없습니다.
+""",
         tags=["Artist"]
     )
     def destroy(self, request, *args, **kwargs):
@@ -145,14 +285,42 @@ class ArtistViewSet(viewsets.ModelViewSet):
     # 아티스트 필터링 (커스텀)
     @swagger_auto_schema(
         operation_summary="아티스트 필터링",
-        operation_description="여러 조건(region, category, pay_min, pay_max)으로 아티스트를 필터링합니다.",
+        operation_description="""
+여러 조건(region, category, pay_min, pay_max)으로 아티스트를 필터링합니다.
+
+- region: 지역 (부분 일치)
+- category: 카테고리명 (정확 일치, 예: "음악")
+- pay_min: 최소 페이
+- pay_max: 최대 페이
+
+**예시:**  
+`/api/v1/artists/filter/?region=서울&category=음악&pay_min=10000&pay_max=50000`
+
+**응답 예시:**
+```json
+{
+  "count": 15,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "name": "밴드A",
+      "categories_display": ["음악"],
+      "region": ["서울", "경기"],
+      "desired_pay": 100000,
+      "is_free_allowed": true
+    }
+  ]
+}
+```
+""",
         manual_parameters=[
-            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='지역'),
-            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID'),
+            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='지역 (부분 일치, 예: "서울")'),
+            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='카테고리명 (정확 일치, 예: "음악")'),
             openapi.Parameter('pay_min', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최소 페이'),
             openapi.Parameter('pay_max', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최대 페이'),
         ],
-        responses={200: ArtistSerializer(many=True)},
         tags=["Artist"]
     )
     @transaction.atomic
@@ -167,13 +335,13 @@ class ArtistViewSet(viewsets.ModelViewSet):
         if region:
             qs = qs.filter(region__icontains=region)
         if category:
-            qs = qs.filter(category_id=category)
+            qs = qs.filter(categories__name=category)
         if pay_min:
             qs = qs.filter(desired_pay__gte=int(pay_min))
         if pay_max:
             qs = qs.filter(desired_pay__lte=int(pay_max))
 
-        page = self.paginate_queryset(qs.order_by("-id"))
+        page = self.paginate_queryset(qs.distinct().order_by("-id"))
         ser = self.get_serializer(page or qs, many=True)
         if page is not None:
             return self.get_paginated_response(ser.data)

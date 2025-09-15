@@ -22,10 +22,10 @@ class Space(models.Model):
     kakao_map_link = models.URLField(max_length=500)
 
     # 카테고리(필수) + 커스텀 텍스트 저장
-    category = models.ForeignKey(
-        SpaceCategory, 
-        on_delete=models.PROTECT, 
-        related_name="main_category_spaces"   # ✅ 수정
+    categories = models.ManyToManyField(
+        SpaceCategory,
+        blank=True,
+        related_name="spaces"
     )
     preferred_categories = models.ManyToManyField(
         Category, 

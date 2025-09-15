@@ -34,6 +34,10 @@ class Posting(models.Model):
     date = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def space_address(self):
+        return self.space.address if self.space else None
+
     def clean(self):
         # URLField 스킴 강제(지침 3)
         if self.posting_image_url and not (

@@ -40,7 +40,43 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공간 생성",
-        operation_description="새로운 공간을 등록합니다. 이미 공간 프로필이 있으면 생성할 수 없습니다.",
+        operation_description="""
+새로운 공간을 등록합니다.
+
+**필수 필드:**
+- place_name: 공간명
+- address: 주소
+- kakao_map_link: 카카오맵 링크
+- categories: 공간 카테고리명 배열 (예: ["연습실", "콘서트홀"])
+- business_registration_number: 사업자등록번호
+
+**선택 필드:**
+- postal_code: 우편번호
+- preferred_categories: 선호 카테고리명 배열
+- custom_category: 커스텀 카테고리
+- description: 공간 설명
+- capacity_seated: 좌석 수
+- capacity_standing: 입석 수
+- atmosphere: 분위기 키워드 배열
+- profile_image: 대표 이미지 파일
+- new_images: 공간 사진 파일들 (여러 장)
+
+**예시 요청 (JSON):**
+```json
+{
+  "place_name": "스튜디오A",
+  "address": "서울시 강남구 테헤란로 123",
+  "kakao_map_link": "https://map.kakao.com/...",
+  "categories": ["연습실", "콘서트홀"],
+  "business_registration_number": "123-45-67890",
+  "preferred_categories": ["음악", "무용"],
+  "description": "음향 시설이 완비된 연습실입니다",
+  "capacity_seated": 50,
+  "capacity_standing": 100,
+  "atmosphere": ["아늑한", "모던한", "넓은"]
+}
+```
+""",
         tags=["Space"]
     )
     def create(self, request, *args, **kwargs):
@@ -51,7 +87,17 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 전체 수정 (PUT)
     @swagger_auto_schema(
         operation_summary="공간 전체 수정",
-        operation_description="공간 정보를 전체 수정합니다.",
+        operation_description="""
+공간 정보를 전체 수정합니다.
+
+**필수 필드:**
+- place_name, address, kakao_map_link, categories (배열), business_registration_number
+
+**선택 필드:**
+- postal_code, preferred_categories (배열), custom_category, description
+- capacity_seated, capacity_standing, atmosphere (배열)
+- profile_image, new_images (배열)
+""",
         tags=["Space"]
     )
     def update(self, request, *args, **kwargs):
@@ -65,7 +111,15 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 부분 수정 (PATCH)
     @swagger_auto_schema(
         operation_summary="공간 부분 수정",
-        operation_description="공간 정보를 일부 수정합니다.",
+        operation_description="""
+공간 정보를 일부 수정합니다.
+
+**수정하고 싶은 필드만 전송하면 됩니다:**
+- place_name, address, kakao_map_link, categories (배열), business_registration_number
+- postal_code, preferred_categories (배열), custom_category, description
+- capacity_seated, capacity_standing, atmosphere (배열)
+- profile_image, new_images (배열)
+""",
         tags=["Space"]
     )
     def partial_update(self, request, *args, **kwargs):
@@ -79,7 +133,13 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 목록 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공간 목록 조회",
-        operation_description="모든 공간의 리스트를 조회합니다.",
+        operation_description="""
+모든 공간의 리스트를 조회합니다.
+
+**응답 정보:**
+- 페이지네이션 적용
+- 카테고리, 선호 카테고리, 대표 이미지 등 포함
+""",
         tags=["Space"]
     )
     def list(self, request, *args, **kwargs):
@@ -88,7 +148,18 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 상세 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공간 상세 조회",
-        operation_description="특정 공간의 상세 정보를 조회합니다.",
+        operation_description="""
+특정 공간의 상세 정보를 조회합니다.
+
+**포함 정보:**
+- 기본 공간 정보
+- 카테고리 목록 (categories_display)
+- 선호 카테고리 목록 (preferred_categories_display)
+- 보유 장비 목록 (equipments_display)
+- 공간 사진들 (images)
+- 대표 이미지 URL
+- 연락처 정보
+""",
         tags=["Space"]
     )
     def retrieve(self, request, *args, **kwargs):
@@ -97,7 +168,12 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 삭제 (DELETE)
     @swagger_auto_schema(
         operation_summary="공간 삭제",
-        operation_description="공간을 삭제합니다.",
+        operation_description="""
+공간을 삭제합니다.
+
+**권한:** 본인 또는 관리자만 삭제 가능  
+**주의:** 삭제된 데이터는 복구할 수 없습니다.
+""",
         tags=["Space"]
     )
     def destroy(self, request, *args, **kwargs):
@@ -155,10 +231,19 @@ class SpaceViewSet(viewsets.ModelViewSet):
     # 공간 필터링 (커스텀)
     @swagger_auto_schema(
         operation_summary="공간 필터링",
-        operation_description="여러 조건(region, category, cap_min, cap_max)으로 공간을 필터링합니다.",
+        operation_description="""
+여러 조건(region, category, cap_min, cap_max)으로 공간을 필터링합니다.
+
+- region: 지역 (부분 일치)
+- category: 공간 카테고리명 (정확 일치, 예: "연습실")
+- cap_min: 최소 좌석 수
+- cap_max: 최대 좌석 수
+
+예시: ?region=서울&category=연습실&cap_min=50&cap_max=200
+""",
         manual_parameters=[
             openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='지역'),
-            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 ID'),
+            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 카테고리명 (예: "연습실")'),
             openapi.Parameter('cap_min', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최소 좌석 수'),
             openapi.Parameter('cap_max', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='최대 좌석 수'),
         ],

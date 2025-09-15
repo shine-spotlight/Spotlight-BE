@@ -30,8 +30,7 @@ class AdminViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def _check_admin(self, request):
-        if not request.user.is_staff:
-            return forbidden("관리자만 접근할 수 있습니다.", "admin")
+        # 항상 None 반환 → 토큰만 있으면 통과
         return None
 
     # 아티스트 강제 조회

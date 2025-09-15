@@ -14,25 +14,22 @@ def _norm_to_list(value):
 
 class ArtistSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    category = serializers.CharField(source="category.name", read_only=True)   # 출력: 문자열
-    category_name = serializers.CharField(write_only=True, required=False)      # 입력: name 문자열
-    user = serializers.PrimaryKeyRelatedField(read_only=True)
-    equipments = serializers.ListField(
+    categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
-    equipments_display = serializers.SerializerMethodField(read_only=True)
+    categories_display = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
         fields = [
             "id", "user", "name", "bio", "number_of_members",
-            "category", "category_name", "custom_category",
+            "categories", "categories_display", "custom_category",
             "equipments", "equipments_display", "portfolio_links",
             "profile_image", "profile_image_url", "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
         ]
         read_only_fields = [
-            "id", "created_at", "equipments_display", "phone_number", "category"
+            "id", "created_at", "equipments_display", "phone_number", "categories_display"
         ]
 
     def validate_portfolio_links(self, value):
@@ -49,17 +46,20 @@ class ArtistSerializer(serializers.ModelSerializer):
     def get_equipments_display(self, obj):
         return [e.name for e in obj.equipments.all()]
 
+    def get_categories_display(self, obj):
+        return [c.name for c in obj.categories.all()]
+
     def validate(self, attrs):
-        # category_name → category 객체로 변환
-        category_name = self.initial_data.get("category_name")
-        if category_name:
-            try:
-                category = Category.objects.get(name=category_name)
-            except Category.DoesNotExist:
-                raise serializers.ValidationError({"category_name": f"존재하지 않는 카테고리입니다: {category_name}"})
-            attrs["category"] = category
-        elif self.instance and not attrs.get("category"):
-            attrs["category"] = self.instance.category  # 기존 값 유지
+        categories_names = self.initial_data.get("categories")
+        if categories_names is not None:
+            if not isinstance(categories_names, list):
+                raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
+            categories = Category.objects.filter(name__in=categories_names)
+            if len(categories) != len(categories_names):
+                found_names = set(categories.values_list("name", flat=True))
+                not_found = set(categories_names) - found_names
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
+            attrs["categories"] = categories
 
         # 기존 값 유지 로직 (필요시)
         if self.instance:
@@ -73,9 +73,11 @@ class ArtistSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        validated_data.pop("category_name", None)
+        categories = validated_data.pop("categories", [])
         equipments = validated_data.pop("equipments", [])
         artist = super().create(validated_data)
+        if categories:
+            artist.categories.set(categories)
         if equipments:
             artist.equipments.set(
                 EquipmentCategory.objects.filter(name__in=equipments)
@@ -83,9 +85,11 @@ class ArtistSerializer(serializers.ModelSerializer):
         return artist
 
     def update(self, instance, validated_data):
-        validated_data.pop("category_name", None)
+        categories = validated_data.pop("categories", None)
         equipments = validated_data.pop("equipments", None)
         artist = super().update(instance, validated_data)
+        if categories is not None:
+            artist.categories.set(categories)
         if equipments is not None:
             artist.equipments.set(
                 EquipmentCategory.objects.filter(name__in=equipments)

@@ -8,6 +8,7 @@ class PostingSerializer(serializers.ModelSerializer):
         queryset=Space.objects.all(), source="space", write_only=True, required=True
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
+    space_address = serializers.CharField(source="space.address", read_only=True)
     categories = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), many=True, required=False
     )
@@ -17,12 +18,13 @@ class PostingSerializer(serializers.ModelSerializer):
         model = Posting
         fields = [
             "id", "space", "space_id",
+            "space_address",
             "title", "description",
             "posting_image", "posting_image_url",
             "categories", "category_names",
             "price_type", "price_amount", "date", "created_at",
         ]
-        read_only_fields = ["id", "created_at", "space", "category_names"]
+        read_only_fields = ["id", "created_at", "space", "category_names", "space_address"]
 
     def get_category_names(self, obj):
         return [c.name for c in obj.categories.all()]
