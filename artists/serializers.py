@@ -13,6 +13,7 @@ def _norm_to_list(value):
     return [s] if s else []
 
 class ArtistSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
