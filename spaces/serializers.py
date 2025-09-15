@@ -13,7 +13,13 @@ def _norm_to_list(value):
 
 class SpaceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    # 기존 단일 category, category_name 필드 제거
+    class SpaceSerializer(serializers.ModelSerializer):
+        # ...existing fields...
+        preferred_categories_display = serializers.SerializerMethodField(read_only=True)
+        # ...existing fields...
+    
+        def get_preferred_categories_display(self, obj):
+            return [c.name for c in obj.preferred_categories.all()]    # 기존 단일 category, category_name 필드 제거
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
