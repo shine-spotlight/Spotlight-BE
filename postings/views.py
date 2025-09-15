@@ -44,7 +44,7 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         return None
 
-    # 공연 공고 생성 (POST)
+    # 공연 공고 생성 (POST임)
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
         operation_description="""
