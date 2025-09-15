@@ -12,7 +12,7 @@ class Artist(models.Model):
     bio = models.TextField(blank=True, null=True)
     number_of_members = models.IntegerField(default=1)
     # 카테고리(필수) + 커스텀 텍스트 저장
-    category = models.ForeignKey(Category, on_delete=models.PROTECT, null=False, blank=False)
+    categories = models.ManyToManyField(Category, blank=True)
     custom_category = models.CharField(max_length=255, blank=True, null=True)
 
     # 필요장비 (ManyToMany → artistequipments 앱의 ArtistEquipment 사용)

@@ -26,9 +26,9 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        if self.action in ["kakao_callback"]:  # 로그인은 열어둠
+        if self.action in ["kakao_callback"]:
             return [AllowAny()]
-        return [IsAuthenticated()]  # 나머지는 토큰 필요
+        return [IsAuthenticated()]
 
     # ✅ 카카오 로그인 콜백
     @swagger_auto_schema(
@@ -49,7 +49,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 examples={
                     "application/json": {
                         "accessToken": "string",
-                        "user": {"id": 1, "username": "user", "role": "artist", "phone_number": "010-0000-0000"}
+                        "user": {"id": 1, "username": "user", "role": "artist", "phone_number": "010-0000-0000"},
+                        "isOnboarding": True
                     }
                 }
             ),
@@ -109,7 +110,18 @@ class UserViewSet(viewsets.ModelViewSet):
         token, _ = Token.objects.get_or_create(user=user)
         user_data = UserSerializer(user).data
 
-        return Response({"accessToken": token.key, "user": user_data}, status=status.HTTP_200_OK)
+        # 온보딩 여부 판단 (role, phone_number 등 필수 정보가 비어있으면 True)
+        is_onboarding = (
+            not user.role or
+            not user.phone_number or
+            not user.username or user.username == ""  # 필요시 추가 필드 체크
+        )
+
+        return Response({
+            "accessToken": token.key,
+            "user": user_data,
+            "isOnboarding": is_onboarding
+        }, status=status.HTTP_200_OK)
 
     # ✅ 로그아웃
     @swagger_auto_schema(
@@ -154,8 +166,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if role not in ["artist", "space"]:
             return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
-        if request.user.role:
-            return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
+        # 기존: 최초 1회만 설정
+        # if request.user.role:
+        #     return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
+        # 변경: 언제든 변경 가능
         request.user.role = role
         request.user.save()
         return Response(UserSerializer(request.user).data, status=200)
