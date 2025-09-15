@@ -16,6 +16,7 @@ class Artist(models.Model):
     custom_category = models.CharField(max_length=255, blank=True, null=True)
 
     # 필요장비 (ManyToMany → artistequipments 앱의 ArtistEquipment 사용)
+    #bepo
     equipments = models.ManyToManyField(
         EquipmentCategory,
         through="artistequipments.ArtistEquipment",
