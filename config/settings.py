@@ -39,7 +39,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_yasg",
 
-    # custom apps
+    # custom apps1
     "users",
     "artists",
     "spaces",
