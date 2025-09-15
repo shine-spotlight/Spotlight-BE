@@ -21,6 +21,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     equipments = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
+    equipments_display = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
@@ -64,6 +65,18 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
+        # equipments 검증 및 객체 변환
+        equipments_names = self.initial_data.get("equipments")
+        if equipments_names is not None:
+            if not isinstance(equipments_names, list):
+                raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
+            equipments = EquipmentCategory.objects.filter(name__in=equipments_names)
+            if len(equipments) != len(equipments_names):
+                found_names = set(equipments.values_list("name", flat=True))
+                not_found = set(equipments_names) - found_names
+                raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
+            attrs["equipments"] = equipments
+
         # 기존 값 유지 로직 (필요시)
         if self.instance:
             for field in [
@@ -82,9 +95,7 @@ class ArtistSerializer(serializers.ModelSerializer):
         if categories:
             artist.categories.set(categories)
         if equipments:
-            artist.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
+            artist.equipments.set(equipments)
         return artist
 
     def update(self, instance, validated_data):
@@ -94,7 +105,5 @@ class ArtistSerializer(serializers.ModelSerializer):
         if categories is not None:
             artist.categories.set(categories)
         if equipments is not None:
-            artist.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
+            artist.equipments.set(equipments)
         return artist
