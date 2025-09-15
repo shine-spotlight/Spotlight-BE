@@ -17,6 +17,7 @@ from spaces.serializers import SpaceSerializer
 from points.serializers import PointTransactionSerializer
 from notifications.serializers import NotificationSerializer
 from users.models import User
+from users.serializers import UserSerializer  # 상단에 추가
 
 
 def forbidden(detail: str, field: str = ""):
@@ -264,3 +265,18 @@ class AdminViewSet(viewsets.ViewSet):
                 target_link=f"/api/v1/suggestions/{sugg.id}/"
             )
         return Response(SuggestionSerializer(sugg).data, status=200)
+
+    # 전체 유저 조회
+    @swagger_auto_schema(
+        operation_summary="전체 유저 조회",
+        operation_description="관리자가 전체 유저 목록을 조회합니다.",
+        responses={200: UserSerializer(many=True)},
+        tags=["Admin"]
+    )
+    @action(detail=False, methods=["get"], url_path="users")
+    def list_users(self, request):
+        guard = self._check_admin(request)
+        if guard:
+            return guard
+        qs = User.objects.all().order_by("-id")
+        return Response(UserSerializer(qs, many=True).data, status=200)
