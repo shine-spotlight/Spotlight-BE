@@ -10,7 +10,7 @@ from artistequipments.models import ArtistEquipment
 from .serializers import ArtistSerializer
 from equipmentcategories.models import EquipmentCategory
 from users.permissions import IsOwnerOrReadOnlyWithAdminPass
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -246,6 +246,8 @@ class ArtistViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
+        if self.request.user.role != "artists":
+            raise PermissionDenied("아티스트 권한이 있는 유저만 가입할 수 있습니다.")
         serializer.save(user=self.request.user)
         self._handle_m2m_fields(self.request, serializer.instance)
 

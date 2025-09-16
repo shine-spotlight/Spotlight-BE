@@ -114,7 +114,7 @@ class UserViewSet(viewsets.ModelViewSet):
         is_onboarding = (
             not user.role or
             not user.phone_number or
-            not user.username or user.username == ""  # 필요시 추가 필드 체크
+            not user.kakao_id or user.kakao_id == ""  # 필요시 추가 필드 체크
         )
 
         return Response({

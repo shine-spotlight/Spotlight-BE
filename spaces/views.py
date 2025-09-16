@@ -9,7 +9,7 @@ from .models import Space
 from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -36,6 +36,8 @@ class SpaceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
+        if self.request.user.role != "spaces":
+            raise PermissionDenied("공간 권한이 있는 유저만 공간을 등록할 수 있습니다.")
         serializer.save(user=self.request.user)
     # 공간 생성 (POST)
     @swagger_auto_schema(
