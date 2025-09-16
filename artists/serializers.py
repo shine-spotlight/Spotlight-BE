@@ -3,6 +3,7 @@ from .models import Artist
 from artistequipments.models import ArtistEquipment
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
+from likes.models import Like
 
 def _norm_to_list(value):
     if value is None:
@@ -23,6 +24,7 @@ class ArtistSerializer(serializers.ModelSerializer):
         child=serializers.CharField(), write_only=True, required=False
     )
     equipments_display = serializers.SerializerMethodField(read_only=True)
+    is_liked = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
@@ -32,9 +34,10 @@ class ArtistSerializer(serializers.ModelSerializer):
             "equipments", "equipments_display", "portfolio_links",
             "profile_image", "profile_image_url", "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
+            "is_liked",
         ]
         read_only_fields = [
-            "id", "created_at", "equipments_display", "phone_number", "categories_display"
+            "id", "created_at", "equipments_display", "phone_number", "categories_display", "is_liked"
         ]
 
     def validate_portfolio_links(self, value):
@@ -53,6 +56,12 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     def get_categories_display(self, obj):
         return [c.name for c in obj.categories.all()]
+
+    def get_is_liked(self, obj):
+        request = self.context.get("request", None)
+        if request and request.user and request.user.is_authenticated:
+            return Like.objects.filter(user=request.user, artist=obj).exists()
+        return False
 
     def validate(self, attrs):
         categories_names = self.initial_data.get("categories")

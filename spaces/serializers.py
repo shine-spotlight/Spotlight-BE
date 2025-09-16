@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Space, SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 from categories.models import Category
+from likes.models import Like
 
 def _norm_to_list(value):
     if value is None:
@@ -26,6 +27,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         child=serializers.CharField(), write_only=True, required=False
     )
     preferred_categories_display = serializers.SerializerMethodField(read_only=True)
+    is_liked = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Space
@@ -35,10 +37,11 @@ class SpaceSerializer(serializers.ModelSerializer):
             "custom_category", "description", "capacity_seated", "capacity_standing",
             "business_registration_number", "atmosphere", "place_image", "place_image_url",
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
+            "is_liked",
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
-            "phone_number", "categories_display", "place_region"
+            "phone_number", "categories_display", "place_region", "is_liked"
         ]
 
     def get_categories_display(self, obj):
@@ -49,6 +52,12 @@ class SpaceSerializer(serializers.ModelSerializer):
 
     def get_preferred_categories_display(self, obj):
         return [c.name for c in obj.preferred_categories.all()]
+
+    def get_is_liked(self, obj):
+        request = self.context.get("request", None)
+        if request and request.user and request.user.is_authenticated:
+            return Like.objects.filter(user=request.user, space=obj).exists()
+        return False
 
     def validate_atmosphere(self, value):
         return _norm_to_list(value)
