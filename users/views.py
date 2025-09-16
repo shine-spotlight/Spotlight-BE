@@ -245,3 +245,16 @@ class UserViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(auto_schema=None) 
     def update(self, request, *args, **kwargs):
         pass
+    
+    @swagger_auto_schema(
+        operation_summary="내 정보(me) 조회",
+        operation_description="토큰 인증된 사용자의 정보를 반환합니다. (url에 id 없이 /users/me/로 접근)",
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
+    @action(detail=False, methods=["get"], url_path="me", permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """
+        토큰 인증된 본인 정보 반환
+        """
+        return Response(UserSerializer(request.user).data)

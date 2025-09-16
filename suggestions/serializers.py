@@ -2,6 +2,8 @@ from rest_framework import serializers
 from .models import Suggestion
 from artists.models import Artist
 from spaces.models import Space
+from artists.serializers import ArtistSerializer
+from spaces.serializers import SpaceSerializer
 
 class SuggestionSerializer(serializers.ModelSerializer):
     artist = serializers.PrimaryKeyRelatedField(
@@ -109,3 +111,31 @@ class SuggestionSerializer(serializers.ModelSerializer):
             return obj.artist.user.phone_number
         # 제3자면 노출 X
         return None
+
+class SuggestionListSerializer(serializers.ModelSerializer):
+    # 공간 주소
+    space_address = serializers.CharField(source="space.address", read_only=True)
+    # 공연 카테고리(아티스트)
+    artist_categories = serializers.SerializerMethodField(read_only=True)
+    # 공간 카테고리(스페이스)
+    space_categories = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Suggestion
+        fields = [
+            "id", "message", "created_at", "is_read", "is_accepted",
+            "space", "artist",
+            "space_address", "artist_categories", "space_categories"
+        ]
+
+    def get_artist_categories(self, obj):
+        if obj.artist:
+            return [c.name for c in obj.artist.categories.all()]
+        return []
+
+    def get_space_categories(self, obj):
+        if obj.space:
+            return [c.name for c in obj.space.categories.all()]
+        return []
+
+# SuggestionViewSet에서 목록/상세 응답에 SuggestionListSerializer 사용
