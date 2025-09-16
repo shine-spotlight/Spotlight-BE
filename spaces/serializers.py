@@ -28,6 +28,7 @@ class SpaceSerializer(serializers.ModelSerializer):
     )
     preferred_categories_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
+    space_onboarding = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Space
@@ -37,7 +38,7 @@ class SpaceSerializer(serializers.ModelSerializer):
             "custom_category", "description", "capacity_seated", "capacity_standing",
             "business_registration_number", "atmosphere", "place_image", "place_image_url",
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
-            "is_liked",
+            "is_liked", "space_onboarding",
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
@@ -58,6 +59,20 @@ class SpaceSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             return Like.objects.filter(user=request.user, space=obj).exists()
         return False
+
+    def get_space_onboarding(self, obj):
+        # 필수 정보가 모두 입력되어 있으면 False, 하나라도 없으면 True
+        required_fields = [
+            obj.place_name,
+            obj.address,
+            #obj.kakao_map_link,
+            obj.business_registration_number,
+            obj.categories.all(),  # ManyToManyField는 all()로 체크
+        ]
+        return any(
+            not field or (hasattr(field, "__len__") and not len(field))
+            for field in required_fields
+        )
 
     def validate_atmosphere(self, value):
         return _norm_to_list(value)

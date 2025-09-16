@@ -25,6 +25,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     )
     equipments_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
+    artist_onboarding = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Artist
@@ -34,10 +35,10 @@ class ArtistSerializer(serializers.ModelSerializer):
             "equipments", "equipments_display", "portfolio_links",
             "profile_image", "profile_image_url", "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
-            "is_liked",
+            "is_liked", "artist_onboarding",
         ]
         read_only_fields = [
-            "id", "created_at", "equipments_display", "phone_number", "categories_display", "is_liked"
+            "id", "created_at", "equipments_display", "phone_number", "categories_display", "is_liked", "artist_onboarding"
         ]
 
     def validate_portfolio_links(self, value):
@@ -62,6 +63,24 @@ class ArtistSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             return Like.objects.filter(user=request.user, artist=obj).exists()
         return False
+
+    def get_artist_onboarding(self, obj):
+        required_fields = [
+            obj.name,
+            obj.bio,
+            # obj.profile_image,
+            obj.region,
+        ]
+        # ManyToManyField는 all()로 체크
+        if not obj.categories.all():
+            return True
+        # if not obj.equipments.all():
+        #     return True
+        # 나머지 필수 필드 체크
+        return any(
+            not field or (hasattr(field, "__len__") and not len(field))
+            for field in required_fields
+        )
 
     def validate(self, attrs):
         categories_names = self.initial_data.get("categories")

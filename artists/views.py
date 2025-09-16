@@ -365,5 +365,5 @@ class ArtistViewSet(viewsets.ModelViewSet):
         try:
             artist = Artist.objects.get(user=request.user)
         except Artist.DoesNotExist:
-            return bad_request("해당 유저의 아티스트 프로필이 없습니다.", "user")
-        return Response(ArtistSerializer(artist).data)
+            return Response({"detail": "해당 유저의 아티스트 프로필이 없습니다."}, status=404)
+        return Response(ArtistSerializer(artist, context={"request": request}).data)
