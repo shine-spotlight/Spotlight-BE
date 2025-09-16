@@ -248,7 +248,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        if self.request.user.role != "artists":
+        if self.request.user.role != "artist":
             raise PermissionDenied("아티스트 권한이 있는 유저만 가입할 수 있습니다.")
         serializer.save(user=self.request.user)
         self._handle_m2m_fields(self.request, serializer.instance)

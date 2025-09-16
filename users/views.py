@@ -255,6 +255,15 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="me", permission_classes=[IsAuthenticated])
     def me(self, request):
         """
-        토큰 인증된 본인 정보 반환
+        토큰 인증된 본인 정보 + 온보딩 여부 반환
         """
-        return Response(UserSerializer(request.user).data)
+        user = request.user
+        is_onboarding = (
+            not user.role or
+            not user.phone_number or
+            not user.kakao_id or user.kakao_id == ""
+        )
+        return Response({
+            "user": UserSerializer(user).data,
+            "isOnboarding": is_onboarding
+        })

@@ -38,7 +38,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
-        if self.request.user.role != "spaces":
+        if self.request.user.role != "space":
             raise PermissionDenied("공간 권한이 있는 유저만 공간을 등록할 수 있습니다.")
         serializer.save(user=self.request.user)
     # 공간 생성 (POST)
