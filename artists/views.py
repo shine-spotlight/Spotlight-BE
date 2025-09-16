@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+
 from .models import Artist
 from artistequipments.models import ArtistEquipment
 from .serializers import ArtistSerializer
@@ -348,3 +350,20 @@ class ArtistViewSet(viewsets.ModelViewSet):
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
+
+    @swagger_auto_schema(
+        operation_summary="내 아티스트 프로필(me) 조회",
+        operation_description="토큰 인증된 사용자의 아티스트 프로필 정보를 반환합니다. (url에 id 없이 /artists/me/로 접근)",
+        responses={200: ArtistSerializer},
+        tags=["Artist"]
+    )
+    @action(detail=False, methods=["get"], url_path="me", permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """
+        토큰 인증된 유저의 아티스트 프로필 정보 반환
+        """
+        try:
+            artist = Artist.objects.get(user=request.user)
+        except Artist.DoesNotExist:
+            return bad_request("해당 유저의 아티스트 프로필이 없습니다.", "user")
+        return Response(ArtistSerializer(artist).data)

@@ -5,12 +5,14 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+
 from .models import Space
 from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
 from rest_framework.exceptions import ValidationError, PermissionDenied
-from rest_framework.permissions import IsAuthenticated
+
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
     return Response({"detail": detail, "code": "invalid_param", "field": field}, status=400)
@@ -275,3 +277,21 @@ class SpaceViewSet(viewsets.ModelViewSet):
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
+
+    # 내 공간(me) 조회
+    @swagger_auto_schema(
+        operation_summary="내 공간(me) 조회",
+        operation_description="토큰 인증된 사용자의 공간 정보를 반환합니다. (url에 id 없이 /spaces/me/로 접근)",
+        responses={200: SpaceSerializer},
+        tags=["Space"]
+    )
+    @action(detail=False, methods=["get"], url_path="me", permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """
+        토큰 인증된 유저의 공간 정보 반환
+        """
+        try:
+            space = Space.objects.get(user=request.user)
+        except Space.DoesNotExist:
+            return bad_request("해당 유저의 공간 정보가 없습니다.", "user")
+        return Response(SpaceSerializer(space).data)
