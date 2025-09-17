@@ -237,16 +237,16 @@ class SpaceViewSet(viewsets.ModelViewSet):
         """
         info 액션에서 처리하던 장비/선호카테고리 등 복합 입력을 여기서 처리
         """
-        # 선호 카테고리 (ManyToMany) - name 기반 + 정규화
+        # 선호 카테고리 (ManyToMany) - 공연 카테고리 기준 (Category)
         if "preferred_categories" in request.data:
             preferred = _norm_json(request.data.get("preferred_categories"), "preferred_categories")
             if not isinstance(preferred, (list, tuple)):
                 raise ValidationError({"detail": "preferred_categories는 배열이어야 합니다", "field": "preferred_categories"})
-            exists = list(SpaceCategory.objects.filter(name__in=preferred).values_list("name", flat=True))
+            exists = list(Category.objects.filter(name__in=preferred).values_list("name", flat=True))
             missing = set(preferred) - set(exists)
             if missing:
-                raise ValidationError({"detail": f"존재하지 않는 카테고리: {sorted(list(missing))}", "field": "preferred_categories"})
-            objs = SpaceCategory.objects.filter(name__in=preferred)
+                raise ValidationError({"detail": f"존재하지 않는 공연 카테고리: {sorted(list(missing))}", "field": "preferred_categories"})
+            objs = Category.objects.filter(name__in=preferred)
             space.preferred_categories.set(objs)
 
         # 보유 장비 (선택 or 직접입력) - name 기반 + 정규화
