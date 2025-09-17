@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import Space
-from categories.models import SpaceCategory, Category
+from categories.models import Category
 from likes.models import Like
+from spaces.models import SpaceCategory
 
 class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
