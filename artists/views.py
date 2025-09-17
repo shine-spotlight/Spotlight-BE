@@ -111,14 +111,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if Artist.objects.filter(user=request.user).exists():
             return bad_request("이미 아티스트 프로필이 있습니다.", "user")
-        # _norm_json 적용
         mutable_data = request.data.copy()
-        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
-            if field in mutable_data:
-                try:
-                    mutable_data[field] = _norm_json(mutable_data[field], field)
-                except Exception:
-                    return bad_request(f"{field}는 유효한 리스트/JSON이어야 합니다.", field)
         serializer = self.get_serializer(data=mutable_data)
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
@@ -164,7 +157,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         # _norm_json 적용
         mutable_data = request.data.copy()
-        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
+        for field in ["portfolio_links", "region"]:
             if field in mutable_data:
                 try:
                     mutable_data[field] = _norm_json(mutable_data[field], field)
@@ -210,7 +203,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
             return forbidden("본인만 수정 가능합니다")
         # _norm_json 적용
         mutable_data = request.data.copy()
-        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
+        for field in ["portfolio_links", "region"]:
             if field in mutable_data:
                 try:
                     mutable_data[field] = _norm_json(mutable_data[field], field)
@@ -330,29 +323,18 @@ class ArtistViewSet(viewsets.ModelViewSet):
 
     def _handle_m2m_fields(self, data, artist):
         """
-        info에서 처리하던 장비 등 복합 입력을 여기서 처리
+        equipments(name 배열)만 처리
         """
-        ids = _norm_json(data.get("equipment_category_ids"), "equipment_category_ids")
-        customs = _norm_json(data.get("custom_equipment_categories"), "custom_equipment_categories")
-        if ids or customs:
-            to_set_ids = []
-            if ids:
-                if not isinstance(ids, (list, tuple)):
-                    raise ValidationError({"detail": "equipment_category_ids는 배열이어야 합니다", "field": "equipment_category_ids"})
-                exists = list(EquipmentCategory.objects.filter(id__in=ids).values_list("id", flat=True))
-                missing = set(ids) - set(exists)
-                if missing:
-                    raise ValidationError({"detail": f"유효하지 않은 id: {sorted(list(missing))}", "field": "equipment_category_ids"})
-                to_set_ids.extend(exists)
-            if not ids and customs:
-                for name in customs:
-                    norm = _norm_name(name)
-                    if not norm:
-                        continue
-                    obj, _ = EquipmentCategory.objects.get_or_create(name=norm)
-                    to_set_ids.append(obj.id)
+        equipments_names = _norm_json(data.get("equipments"), "equipments")
+        if equipments_names:
+            if not isinstance(equipments_names, (list, tuple)):
+                raise ValidationError({"detail": "equipments는 배열이어야 합니다", "field": "equipments"})
+            exists = list(EquipmentCategory.objects.filter(name__in=equipments_names).values_list("name", flat=True))
+            missing = set(equipments_names) - set(exists)
+            if missing:
+                raise ValidationError({"detail": f"존재하지 않는 장비: {sorted(list(missing))}", "field": "equipments"})
+            categories = EquipmentCategory.objects.filter(name__in=exists)
             ArtistEquipment.objects.filter(artist=artist).delete()
-            categories = EquipmentCategory.objects.filter(id__in=to_set_ids)
             ArtistEquipment.objects.bulk_create(
                 [ArtistEquipment(artist=artist, category=cat) for cat in categories]
             )

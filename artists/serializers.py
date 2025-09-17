@@ -4,6 +4,7 @@ from artistequipments.models import ArtistEquipment
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
 from likes.models import Like
+import json
 import ast
 
 def _norm_to_list(value):
@@ -109,9 +110,12 @@ class ArtistSerializer(serializers.ModelSerializer):
             # 문자열로 온 경우 파싱 시도
             if isinstance(categories_names, str):
                 try:
-                    categories_names = ast.literal_eval(categories_names)
+                    categories_names = json.loads(categories_names)
                 except Exception:
-                    raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
+                    try:
+                        categories_names = ast.literal_eval(categories_names)
+                    except Exception:
+                        raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not isinstance(categories_names, list):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):
@@ -123,9 +127,17 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
-        # equipments 검증 및 객체 변환
+        # equipments 검증 및 객체 변환 (문자열 파싱 추가)
         equipments_names = self.initial_data.get("equipments")
         if equipments_names is not None:
+            if isinstance(equipments_names, str):
+                try:
+                    equipments_names = json.loads(equipments_names)
+                except Exception:
+                    try:
+                        equipments_names = ast.literal_eval(equipments_names)
+                    except Exception:
+                        raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not isinstance(equipments_names, list):
                 raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not all(isinstance(eq, str) for eq in equipments_names):
