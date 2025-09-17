@@ -4,6 +4,7 @@ from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
+import ast
 
 class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
@@ -100,9 +101,14 @@ class SpaceSerializer(serializers.ModelSerializer):
         return [value]
 
     def validate(self, attrs):
-        # categories → SpaceCategory 객체 리스트로 변환
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
+            # 문자열로 온 경우 파싱 시도
+            if isinstance(categories_names, str):
+                try:
+                    categories_names = ast.literal_eval(categories_names)
+                except Exception:
+                    raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not isinstance(categories_names, list):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):

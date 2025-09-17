@@ -4,6 +4,7 @@ from artistequipments.models import ArtistEquipment
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
 from likes.models import Like
+import ast
 
 def _norm_to_list(value):
     if value is None:
@@ -105,13 +106,19 @@ class ArtistSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
+            # 문자열로 온 경우 파싱 시도
+            if isinstance(categories_names, str):
+                try:
+                    categories_names = ast.literal_eval(categories_names)
+                except Exception:
+                    raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not isinstance(categories_names, list):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):
                 raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
             categories = list(Category.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
-                found_names = set([c.name for c in categories])
+                found_names = {c.name for c in categories}
                 not_found = set(categories_names) - found_names
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
