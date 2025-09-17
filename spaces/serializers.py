@@ -42,19 +42,23 @@ class SpaceSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        categories_names = validated_data.pop("categories", [])
+        categories = validated_data.pop("categories", [])
+        preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
-        if categories_names:
-            category_objs = SpaceCategory.objects.filter(name__in=categories_names)
-            space.categories.set(category_objs)
+        if categories:
+            space.categories.set(categories)  # 객체 리스트 직접 set
+        if preferred_categories:
+            space.preferred_categories.set(preferred_categories)
         return space
 
     def update(self, instance, validated_data):
-        categories_names = validated_data.pop("categories", None)
+        categories = validated_data.pop("categories", None)
+        preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)
-        if categories_names is not None:
-            category_objs = SpaceCategory.objects.filter(name__in=categories_names)
-            space.categories.set(category_objs)
+        if categories is not None:
+            space.categories.set(categories)
+        if preferred_categories is not None:
+            space.preferred_categories.set(preferred_categories)
         return space
 
     def get_categories_display(self, obj):
@@ -102,21 +106,21 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):
                 raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
-            categories = SpaceCategory.objects.filter(name__in=categories_names)
+            categories = list(SpaceCategory.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
-                found_names = set(categories.values_list("name", flat=True))
+                found_names = set([c.name for c in categories])
                 not_found = set(categories_names) - found_names
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
-        # preferred_categories → Category 객체 리스트로 변환 (이름 배열 허용)
+        # preferred_categories → Category 객체 리스트로 변환
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
-            categories = Category.objects.filter(name__in=preferred_categories_names)
+            categories = list(Category.objects.filter(name__in=preferred_categories_names))
             if len(categories) != len(preferred_categories_names):
-                found_names = set(categories.values_list("name", flat=True))
+                found_names = set([c.name for c in categories])
                 not_found = set(preferred_categories_names) - found_names
                 raise serializers.ValidationError({"preferred_categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["preferred_categories"] = categories

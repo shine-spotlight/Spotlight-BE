@@ -82,6 +82,26 @@ class ArtistSerializer(serializers.ModelSerializer):
             for field in required_fields
         )
 
+    def create(self, validated_data):
+        categories = validated_data.pop("categories", [])
+        equipments = validated_data.pop("equipments", [])
+        artist = super().create(validated_data)
+        if categories:
+            artist.categories.set(categories)
+        if equipments:
+            artist.equipments.set(equipments)
+        return artist
+
+    def update(self, instance, validated_data):
+        categories = validated_data.pop("categories", None)
+        equipments = validated_data.pop("equipments", None)
+        artist = super().update(instance, validated_data)
+        if categories is not None:
+            artist.categories.set(categories)
+        if equipments is not None:
+            artist.equipments.set(equipments)
+        return artist
+
     def validate(self, attrs):
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
@@ -89,9 +109,9 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):
                 raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
-            categories = Category.objects.filter(name__in=categories_names)
+            categories = list(Category.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
-                found_names = set(categories.values_list("name", flat=True))
+                found_names = set([c.name for c in categories])
                 not_found = set(categories_names) - found_names
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
@@ -103,9 +123,9 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not all(isinstance(eq, str) for eq in equipments_names):
                 raise serializers.ValidationError({"equipments": "장비는 반드시 이름(문자열) 배열로 보내야 합니다."})
-            equipments = EquipmentCategory.objects.filter(name__in=equipments_names)
+            equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
             if len(equipments) != len(equipments_names):
-                found_names = set(equipments.values_list("name", flat=True))
+                found_names = set([e.name for e in equipments])
                 not_found = set(equipments_names) - found_names
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
@@ -120,9 +140,3 @@ class ArtistSerializer(serializers.ModelSerializer):
                 if field not in attrs and hasattr(self.instance, field):
                     attrs[field] = getattr(self.instance, field)
         return attrs
-
-    def create(self, validated_data):
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
