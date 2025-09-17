@@ -325,12 +325,13 @@ class ArtistViewSet(viewsets.ModelViewSet):
 
     def _handle_m2m_fields(self, data, artist):
         """
-        equipments(name 배열)만 처리
+        equipments(name 배열)만 처리 (norm_name 적용)
         """
         equipments_names = _norm_json(data.get("equipments"), "equipments")
         if equipments_names:
             if not isinstance(equipments_names, (list, tuple)):
                 raise ValidationError({"detail": "equipments는 배열이어야 합니다", "field": "equipments"})
+            # norm_name이 이미 적용된 상태
             exists = list(EquipmentCategory.objects.filter(name__in=equipments_names).values_list("name", flat=True))
             missing = set(equipments_names) - set(exists)
             if missing:
@@ -392,9 +393,11 @@ class ArtistViewSet(viewsets.ModelViewSet):
         pay_max = request.query_params.get("pay_max")
 
         if region:
-            qs = qs.filter(region__icontains=region)
+            norm_region = _norm_name(region)
+            qs = qs.filter(region__icontains=norm_region)
         if category:
-            qs = qs.filter(categories__name=category)
+            norm_category = _norm_name(category)
+            qs = qs.filter(categories__name=norm_category)
         if pay_min:
             qs = qs.filter(desired_pay__gte=int(pay_min))
         if pay_max:

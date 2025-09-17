@@ -7,6 +7,9 @@ from equipmentcategories.models import EquipmentCategory
 import json
 import ast
 
+def _norm_name(name: str) -> str:
+    return " ".join(str(name).strip().split()).lower()
+
 class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
@@ -94,7 +97,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         return [value]
 
     def validate(self, attrs):
-        # categories → SpaceCategory 객체 리스트로 변환
+        # categories → SpaceCategory 객체 리스트로 변환 (norm_name 적용)
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
             if isinstance(categories_names, str):
@@ -104,8 +107,8 @@ class SpaceSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not isinstance(categories_names, list):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
-            if not all(isinstance(cat, str) for cat in categories_names):
-                raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
+            # norm_name 적용
+            categories_names = [_norm_name(cat) for cat in categories_names if isinstance(cat, str)]
             categories = list(SpaceCategory.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
                 found_names = {c.name for c in categories}
@@ -113,7 +116,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
-        # preferred_categories → Category 객체 리스트로 변환
+        # preferred_categories → Category 객체 리스트로 변환 (norm_name 적용)
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
             if isinstance(preferred_categories_names, str):
@@ -123,8 +126,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
-            if not all(isinstance(cat, str) for cat in preferred_categories_names):
-                raise serializers.ValidationError({"preferred_categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
+            preferred_categories_names = [_norm_name(cat) for cat in preferred_categories_names if isinstance(cat, str)]
             categories = list(Category.objects.filter(name__in=preferred_categories_names))
             if len(categories) != len(preferred_categories_names):
                 found_names = {c.name for c in categories}
@@ -132,7 +134,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"preferred_categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["preferred_categories"] = categories
 
-        # equipments → EquipmentCategory 객체 리스트로 변환
+        # equipments → EquipmentCategory 객체 리스트로 변환 (norm_name 적용)
         equipments_names = self.initial_data.get("equipments")
         if equipments_names is not None:
             if isinstance(equipments_names, str):
@@ -145,8 +147,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not isinstance(equipments_names, list):
                 raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
-            if not all(isinstance(eq, str) for eq in equipments_names):
-                raise serializers.ValidationError({"equipments": "장비는 반드시 이름(문자열) 배열로 보내야 합니다."})
+            equipments_names = [_norm_name(eq) for eq in equipments_names if isinstance(eq, str)]
             equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
             if len(equipments) != len(equipments_names):
                 found_names = {e.name for e in equipments}
@@ -154,7 +155,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
 
-        # atmosphere → 리스트로 변환
+        # atmosphere → 리스트로 변환 (norm_name 적용)
         atmosphere = self.initial_data.get("atmosphere")
         if atmosphere is not None:
             if isinstance(atmosphere, str):
@@ -167,8 +168,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
             if not isinstance(atmosphere, list):
                 raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
-            if not all(isinstance(item, str) for item in atmosphere):
-                raise serializers.ValidationError({"atmosphere": "분위기는 반드시 문자열 배열이어야 합니다."})
+            atmosphere = [_norm_name(item) for item in atmosphere if isinstance(item, str)]
             attrs["atmosphere"] = atmosphere
 
         # 기존 값 유지 로직 (필요시)

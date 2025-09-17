@@ -308,9 +308,10 @@ class SpaceViewSet(viewsets.ModelViewSet):
         if region:
             qs = qs.filter(place_region__icontains=region)
         if category:
-            # category는 이름(문자열)으로 받음 → id로 변환
+            # category는 이름(문자열)으로 받음 → 정규화 후 name으로 필터
+            norm_category = _norm_name(category)
             try:
-                cat_obj = SpaceCategory.objects.get(name=category)
+                cat_obj = SpaceCategory.objects.get(name=norm_category)
                 qs = qs.filter(categories=cat_obj)
             except SpaceCategory.DoesNotExist:
                 return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
