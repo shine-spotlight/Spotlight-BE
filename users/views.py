@@ -114,17 +114,37 @@ class UserViewSet(viewsets.ModelViewSet):
         token, _ = Token.objects.get_or_create(user=user)
         user_data = UserSerializer(user).data
 
-        # 온보딩 여부 판단 (role, phone_number 등 필수 정보가 비어있으면 True)
+        # 온보딩 3가지 판단
         is_onboarding = (
             not user.role or
             not user.phone_number or
-            not user.kakao_id or user.kakao_id == ""  # 필요시 추가 필드 체크
+            not user.kakao_id or user.kakao_id == ""
         )
+
+        is_artistonboarding = None
+        if user.role == "artist":
+            try:
+                artist = Artist.objects.get(user=user)
+                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get("artist_onboarding", True)
+            except Artist.DoesNotExist:
+                artist_onboarding = True
+            is_artistonboarding = is_onboarding or artist_onboarding
+
+        is_spaceonboarding = None
+        if user.role == "space":
+            try:
+                space = Space.objects.get(user=user)
+                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get("space_onboarding", True)
+            except Space.DoesNotExist:
+                space_onboarding = True
+            is_spaceonboarding = is_onboarding or space_onboarding
 
         return Response({
             "accessToken": token.key,
             "user": user_data,
-            "isOnboarding": is_onboarding
+            "isOnboarding": is_onboarding,
+            "is_artistonboarding": is_artistonboarding,
+            "is_spaceonboarding": is_spaceonboarding,
         }, status=status.HTTP_200_OK)
 
     # ✅ 로그아웃
