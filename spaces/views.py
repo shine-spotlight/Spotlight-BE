@@ -212,8 +212,15 @@ class SpaceViewSet(viewsets.ModelViewSet):
                 preferred = json.loads(preferred)
             space.preferred_categories.set(preferred or [])
 
-        #보유 장비 (선택 or 직접입력)
+        # 보유 장비 (선택 or 직접입력)
         ids = request.data.get("equipment_category_ids")
+        # 문자열로 들어온 경우 파싱
+        if isinstance(ids, str):
+            import ast
+            try:
+                ids = ast.literal_eval(ids)
+            except Exception:
+                raise ValidationError({"detail": "equipment_category_ids는 배열이어야 합니다", "field": "equipment_category_ids"})
         customs = _norm_to_list(request.data.get("custom_equipment_categories"))
         if ids or customs:
             to_set_ids = []
@@ -272,7 +279,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
         if region:
             qs = qs.filter(place_region__icontains=region)
         if category:
-            # category는 이름(문자열)로 받음 → id로 변환
+            # category는 이름(문자열)으로 받음 → id로 변환
             try:
                 cat_obj = SpaceCategory.objects.get(name=category)
                 qs = qs.filter(categories=cat_obj)
