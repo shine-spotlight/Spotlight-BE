@@ -123,11 +123,19 @@ class SpaceSerializer(serializers.ModelSerializer):
         # preferred_categories → Category 객체 리스트로 변환
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
+            # 문자열로 온 경우 파싱 시도
+            if isinstance(preferred_categories_names, str):
+                try:
+                    preferred_categories_names = ast.literal_eval(preferred_categories_names)
+                except Exception:
+                    raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
+            if not all(isinstance(cat, str) for cat in preferred_categories_names):
+                raise serializers.ValidationError({"preferred_categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
             categories = list(Category.objects.filter(name__in=preferred_categories_names))
             if len(categories) != len(preferred_categories_names):
-                found_names = set([c.name for c in categories])
+                found_names = {c.name for c in categories}
                 not_found = set(preferred_categories_names) - found_names
                 raise serializers.ValidationError({"preferred_categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["preferred_categories"] = categories
