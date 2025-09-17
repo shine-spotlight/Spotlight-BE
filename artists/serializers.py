@@ -38,12 +38,12 @@ class ArtistSerializer(serializers.ModelSerializer):
             "id", "user", "name", "bio", "number_of_members",
             "categories", "categories_display", "custom_category",
             "equipments", "equipments_display", "portfolio_links",
-            "profile_image", "profile_image_url", "region",
+            "profile_image",  "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
             "is_liked", "artist_onboarding",
         ]
         read_only_fields = [
-            "id", "created_at", "equipments_display", "phone_number", "categories_display", "is_liked", "artist_onboarding"
+            "id", "created_at", "equipments_display", "phone_number", "categories_display", "profile_image_url", "is_liked", "artist_onboarding"
         ]
 
     def validate_portfolio_links(self, value):

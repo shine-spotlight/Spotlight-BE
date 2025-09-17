@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Space
+from .models import Space, SpaceImage
 from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
@@ -11,7 +11,18 @@ import ast
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
 
+class SpaceImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpaceImage
+        fields = ['id', 'image', 'uploaded_at']
+
 class SpaceSerializer(serializers.ModelSerializer):
+    # 입력: place_image (단수형, 여러 장 지원)
+    place_image = serializers.ListField(
+        child=serializers.ImageField(), write_only=True, required=False
+    )
+    # 출력: place_image_url (배열)
+    place_image_url = serializers.ListField(read_only=True)
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -34,29 +45,40 @@ class SpaceSerializer(serializers.ModelSerializer):
             "id", "user", "place_name", "address", "postal_code", "kakao_map_link",
             "categories", "categories_display", "preferred_categories", "preferred_categories_display",
             "custom_category", "description", "capacity_seated", "capacity_standing",
-            "business_registration_number", "atmosphere", "place_image", "place_image_url",
+            "business_registration_number", "atmosphere", "place_image", 
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
             "is_liked", "space_onboarding",
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
-            "phone_number", "categories_display", "place_region", "is_liked"
+            "phone_number", "categories_display", "place_image_url","place_region", "is_liked"
         ]
 
     def create(self, validated_data):
+        images = validated_data.pop("place_image", [])
         categories = validated_data.pop("categories", [])
         preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
+        for img in images:
+            SpaceImage.objects.create(space=space, image=img)
         if categories:
             space.categories.set(categories)
         if preferred_categories:
             space.preferred_categories.set(preferred_categories)
+        space.update_place_image_url()
         return space
 
     def update(self, instance, validated_data):
+        images = validated_data.pop("place_image", None)
         categories = validated_data.pop("categories", None)
         preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)
+        if images is not None:
+            # 기존 이미지 삭제 후 새로 저장
+            instance.images.all().delete()
+            for img in images:
+                SpaceImage.objects.create(space=instance, image=img)
+            space.update_place_image_url()
         if categories is not None:
             space.categories.set(categories)
         if preferred_categories is not None:

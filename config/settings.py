@@ -115,7 +115,8 @@ LANGUAGE_CODE = "ko-kr"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
-
+# settings.py
+SITE_DOMAIN = "https://spotlight-be-1.onrender.com"
 
 # Static files
 STATIC_URL = "/static/"
