@@ -4,17 +4,13 @@ from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
+import json
 import ast
 
 class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
-    def create(self, validated_data):
-        return super().create(validated_data)
-    
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
     categories_display = serializers.SerializerMethodField(read_only=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     equipments = serializers.ListField(
@@ -48,7 +44,7 @@ class SpaceSerializer(serializers.ModelSerializer):
         preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
         if categories:
-            space.categories.set(categories)  # 객체 리스트 직접 set
+            space.categories.set(categories)
         if preferred_categories:
             space.preferred_categories.set(preferred_categories)
         return space
@@ -79,13 +75,11 @@ class SpaceSerializer(serializers.ModelSerializer):
         return False
 
     def get_space_onboarding(self, obj):
-        # 필수 정보가 모두 입력되어 있으면 False, 하나라도 없으면 True
         required_fields = [
             obj.place_name,
             obj.address,
-            #obj.kakao_map_link,
             obj.business_registration_number,
-            obj.categories.all(),  # ManyToManyField는 all()로 체크
+            obj.categories.all(),
         ]
         return any(
             not field or (hasattr(field, "__len__") and not len(field))
@@ -93,7 +87,6 @@ class SpaceSerializer(serializers.ModelSerializer):
         )
 
     def validate_atmosphere(self, value):
-        # Ensure value is always returned as a list
         if isinstance(value, list):
             return value
         if value is None:
@@ -101,9 +94,9 @@ class SpaceSerializer(serializers.ModelSerializer):
         return [value]
 
     def validate(self, attrs):
+        # categories → SpaceCategory 객체 리스트로 변환
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
-            # 문자열로 온 경우 파싱 시도
             if isinstance(categories_names, str):
                 try:
                     categories_names = ast.literal_eval(categories_names)
@@ -123,7 +116,6 @@ class SpaceSerializer(serializers.ModelSerializer):
         # preferred_categories → Category 객체 리스트로 변환
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
-            # 문자열로 온 경우 파싱 시도
             if isinstance(preferred_categories_names, str):
                 try:
                     preferred_categories_names = ast.literal_eval(preferred_categories_names)
@@ -143,16 +135,41 @@ class SpaceSerializer(serializers.ModelSerializer):
         # equipments → EquipmentCategory 객체 리스트로 변환
         equipments_names = self.initial_data.get("equipments")
         if equipments_names is not None:
+            if isinstance(equipments_names, str):
+                try:
+                    equipments_names = json.loads(equipments_names)
+                except Exception:
+                    try:
+                        equipments_names = ast.literal_eval(equipments_names)
+                    except Exception:
+                        raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not isinstance(equipments_names, list):
                 raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
             if not all(isinstance(eq, str) for eq in equipments_names):
                 raise serializers.ValidationError({"equipments": "장비는 반드시 이름(문자열) 배열로 보내야 합니다."})
             equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
             if len(equipments) != len(equipments_names):
-                found_names = set([e.name for e in equipments])
+                found_names = {e.name for e in equipments}
                 not_found = set(equipments_names) - found_names
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
+
+        # atmosphere → 리스트로 변환
+        atmosphere = self.initial_data.get("atmosphere")
+        if atmosphere is not None:
+            if isinstance(atmosphere, str):
+                try:
+                    atmosphere = json.loads(atmosphere)
+                except Exception:
+                    try:
+                        atmosphere = ast.literal_eval(atmosphere)
+                    except Exception:
+                        raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
+            if not isinstance(atmosphere, list):
+                raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
+            if not all(isinstance(item, str) for item in atmosphere):
+                raise serializers.ValidationError({"atmosphere": "분위기는 반드시 문자열 배열이어야 합니다."})
+            attrs["atmosphere"] = atmosphere
 
         # 기존 값 유지 로직 (필요시)
         if self.instance:

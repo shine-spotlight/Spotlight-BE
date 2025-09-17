@@ -13,6 +13,8 @@ from .serializers import ArtistSerializer
 from equipmentcategories.models import EquipmentCategory
 from users.permissions import IsOwnerOrReadOnlyWithAdminPass
 from rest_framework.exceptions import ValidationError, PermissionDenied
+import json
+import ast
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -31,6 +33,36 @@ def _norm_to_list(value):
 
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
+
+def _norm_json(value, field="value"):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        # JSON 파싱 시도
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, (list, tuple, dict)):
+                return parsed
+        except Exception:
+            pass
+        # ast.literal_eval 시도
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple, dict)):
+                return parsed
+        except Exception:
+            pass
+        # 마지막으로 문자열을 리스트로 감싸서 반환
+        return [s]
+    # 그 외 타입이면 리스트로 감싸서 반환
+    return [value]
 
 class ArtistViewSet(viewsets.ModelViewSet):
     queryset = Artist.objects.all()
@@ -79,10 +111,18 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if Artist.objects.filter(user=request.user).exists():
             return bad_request("이미 아티스트 프로필이 있습니다.", "user")
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        # _norm_json 적용
+        mutable_data = request.data.copy()
+        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
+            if field in mutable_data:
+                try:
+                    mutable_data[field] = _norm_json(mutable_data[field], field)
+                except Exception:
+                    return bad_request(f"{field}는 유효한 리스트/JSON이어야 합니다.", field)
+        serializer = self.get_serializer(data=mutable_data)
+        serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
-        self._handle_m2m_fields(request, serializer.instance)
+        self._handle_m2m_fields(mutable_data, serializer.instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -122,10 +162,18 @@ class ArtistViewSet(viewsets.ModelViewSet):
         if not (request.user.is_superuser or request.user.id == artist.user_id):
             return forbidden("본인만 수정 가능합니다")
         partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(artist, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        # _norm_json 적용
+        mutable_data = request.data.copy()
+        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
+            if field in mutable_data:
+                try:
+                    mutable_data[field] = _norm_json(mutable_data[field], field)
+                except Exception:
+                    return bad_request(f"{field}는 유효한 리스트/JSON이어야 합니다.", field)
+        serializer = self.get_serializer(artist, data=mutable_data, partial=partial)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
-        self._handle_m2m_fields(request, serializer.instance)
+        self._handle_m2m_fields(mutable_data, serializer.instance)
         return Response(serializer.data)
 
     # 아티스트 부분 수정 (PATCH)
@@ -160,10 +208,18 @@ class ArtistViewSet(viewsets.ModelViewSet):
         artist = self.get_object()
         if not (request.user.is_superuser or request.user.id == artist.user_id):
             return forbidden("본인만 수정 가능합니다")
-        serializer = self.get_serializer(artist, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        # _norm_json 적용
+        mutable_data = request.data.copy()
+        for field in ["equipment_category_ids", "custom_equipment_categories", "portfolio_links", "region"]:
+            if field in mutable_data:
+                try:
+                    mutable_data[field] = _norm_json(mutable_data[field], field)
+                except Exception:
+                    return bad_request(f"{field}는 유효한 리스트/JSON이어야 합니다.", field)
+        serializer = self.get_serializer(artist, data=mutable_data, partial=True)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
-        self._handle_m2m_fields(request, serializer.instance)
+        self._handle_m2m_fields(mutable_data, serializer.instance)
         return Response(serializer.data)
 
     # 아티스트 목록 조회 (GET)
@@ -266,18 +322,18 @@ class ArtistViewSet(viewsets.ModelViewSet):
         if self.request.user.role != "artist":
             raise PermissionDenied("아티스트 권한이 있는 유저만 가입할 수 있습니다.")
         serializer.save(user=self.request.user)
-        self._handle_m2m_fields(self.request, serializer.instance)
+        self._handle_m2m_fields(self.request.data, serializer.instance)
 
     def perform_update(self, serializer):
         serializer.save()
-        self._handle_m2m_fields(self.request, serializer.instance)
+        self._handle_m2m_fields(self.request.data, serializer.instance)
 
-    def _handle_m2m_fields(self, request, artist):
+    def _handle_m2m_fields(self, data, artist):
         """
         info에서 처리하던 장비 등 복합 입력을 여기서 처리
         """
-        ids = request.data.get("equipment_category_ids")
-        customs = _norm_to_list(request.data.get("custom_equipment_categories"))
+        ids = _norm_json(data.get("equipment_category_ids"), "equipment_category_ids")
+        customs = _norm_json(data.get("custom_equipment_categories"), "custom_equipment_categories")
         if ids or customs:
             to_set_ids = []
             if ids:
