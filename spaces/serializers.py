@@ -109,7 +109,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
             categories = list(SpaceCategory.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
-                found_names = set([c.name for c in categories])
+                found_names = {c.name for c in categories}
                 not_found = set(categories_names) - found_names
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
