@@ -57,6 +57,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 - region: 활동 지역 배열
 - desired_pay: 희망 페이
 - is_free_allowed: 무료 공연 가능 여부
+- equipments: 보유 장비 배열 *출력은 equipments_display*
 
 **예시 요청 (JSON):**
 ```json
@@ -95,6 +96,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 - name, categories (배열), bio, number_of_members
 - custom_category, profile_image, portfolio_links
 - region, desired_pay, is_free_allowed
+-- equipments: 보유 장비 배열 *출력은 equipments_display*
 
 **주의:** PUT 요청은 모든 필드를 다시 설정하므로, 유지하고 싶은 정보도 함께 전송해야 합니다.
 
@@ -136,7 +138,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 - name, categories (배열), bio, number_of_members
 - custom_category, profile_image, portfolio_links
 - region, desired_pay, is_free_allowed
-
+- equipments: 보유 장비 배열 *출력은 equipments_display*
 **예시 요청 (이름만 변경):**
 ```json
 {

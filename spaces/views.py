@@ -65,7 +65,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 - atmosphere: 분위기 키워드 배열
 - profile_image: 대표 이미지 파일
 - new_images: 공간 사진 파일들 (여러 장)
-
+- equipments: 보유 장비 배열 *출력은 equipments_display*
 **예시 요청 (JSON):**
 ```json
 {
@@ -103,6 +103,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 - postal_code, preferred_categories (배열), custom_category, description
 - capacity_seated, capacity_standing, atmosphere (배열)
 - profile_image, new_images (배열)
+- equipments: 보유 장비 배열 *출력은 equipments_display*
 """,
         tags=["Space"]
     )
@@ -126,6 +127,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 - postal_code, preferred_categories (배열), custom_category, description
 - capacity_seated, capacity_standing, atmosphere (배열)
 - profile_image, new_images (배열)
+- equipments: 보유 장비 배열 *출력은 equipments_display*
 """,
         tags=["Space"]
     )
