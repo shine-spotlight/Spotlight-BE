@@ -11,10 +11,11 @@ import ast
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
 
-class SpaceImageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SpaceImage
-        fields = ['id', 'image', 'uploaded_at']
+# SpaceImageSerializer는 더 이상 사용하지 않으므로 주석 처리
+# class SpaceImageSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = SpaceImage
+#         fields = ['id', 'image', 'uploaded_at']
 
 class SpaceSerializer(serializers.ModelSerializer):
     # 입력: place_image (단수형, 여러 장 지원)
@@ -59,13 +60,17 @@ class SpaceSerializer(serializers.ModelSerializer):
         categories = validated_data.pop("categories", [])
         preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
-        for img in images:
-            SpaceImage.objects.create(space=space, image=img)
+        # SpaceImage 관련 코드 주석 처리
+        # for img in images:
+        #     SpaceImage.objects.create(space=space, image=img)
+        # 대신 모델의 add_place_images 메서드 사용
+        if images:
+            space.add_place_images(images)
         if categories:
             space.categories.set(categories)
         if preferred_categories:
             space.preferred_categories.set(preferred_categories)
-        space.update_place_image_url()
+        # space.update_place_image_url()  # add_place_images에서 처리됨
         return space
 
     def update(self, instance, validated_data):
@@ -73,12 +78,15 @@ class SpaceSerializer(serializers.ModelSerializer):
         categories = validated_data.pop("categories", None)
         preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)
+        # SpaceImage 관련 코드 주석 처리
+        # if images is not None:
+        #     instance.images.all().delete()
+        #     for img in images:
+        #         SpaceImage.objects.create(space=instance, image=img)
+        #     space.update_place_image_url()
         if images is not None:
-            # 기존 이미지 삭제 후 새로 저장
-            instance.images.all().delete()
-            for img in images:
-                SpaceImage.objects.create(space=instance, image=img)
-            space.update_place_image_url()
+            instance.clear_place_images()
+            instance.add_place_images(images)
         if categories is not None:
             space.categories.set(categories)
         if preferred_categories is not None:
