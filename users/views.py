@@ -9,6 +9,10 @@ from .models import User
 from .serializers import UserSerializer
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from artists.models import Artist
+from artists.serializers import ArtistSerializer
+from spaces.models import Space
+from spaces.serializers import SpaceSerializer
 
 
 def bad_request(detail: str, field: str = "non_field_error", extra=None):
@@ -258,12 +262,37 @@ class UserViewSet(viewsets.ModelViewSet):
         토큰 인증된 본인 정보 + 온보딩 여부 반환
         """
         user = request.user
+
+        # 1. 기본 유저 온보딩
         is_onboarding = (
             not user.role or
             not user.phone_number or
             not user.kakao_id or user.kakao_id == ""
         )
+
+        # 2. 아티스트 온보딩 (유저 온보딩 + 아티스트 프로필 온보딩)
+        is_artistonboarding = None
+        if user.role == "artist":
+            try:
+                artist = Artist.objects.get(user=user)
+                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get("artist_onboarding", True)
+            except Artist.DoesNotExist:
+                artist_onboarding = True
+            is_artistonboarding = is_onboarding or artist_onboarding
+
+        # 3. 스페이스 온보딩 (유저 온보딩 + 스페이스 프로필 온보딩)
+        is_spaceonboarding = None
+        if user.role == "space":
+            try:
+                space = Space.objects.get(user=user)
+                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get("space_onboarding", True)
+            except Space.DoesNotExist:
+                space_onboarding = True
+            is_spaceonboarding = is_onboarding or space_onboarding
+
         return Response({
             "user": UserSerializer(user).data,
-            "isOnboarding": is_onboarding
+            "isOnboarding": is_onboarding,
+            "is_artistonboarding": is_artistonboarding,
+            "is_spaceonboarding": is_spaceonboarding,
         })

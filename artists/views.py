@@ -74,6 +74,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 """,
         tags=["Artist"]
     )
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         if Artist.objects.filter(user=request.user).exists():
             return bad_request("이미 아티스트 프로필이 있습니다.", "user")
@@ -108,6 +109,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
 """,
         tags=["Artist"]
     )
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         artist = self.get_object()
         if not (request.user.is_superuser or request.user.id == artist.user_id):

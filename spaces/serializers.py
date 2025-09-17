@@ -1,19 +1,9 @@
 from rest_framework import serializers
-from .models import Space, SpaceCategory
-from equipmentcategories.models import EquipmentCategory
-from categories.models import Category
+from .models import Space
+from categories.models import SpaceCategory, Category
 from likes.models import Like
 
-def _norm_to_list(value):
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    s = str(value).strip()
-    return [s] if s else []
-
 class SpaceSerializer(serializers.ModelSerializer):
-    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -45,6 +35,22 @@ class SpaceSerializer(serializers.ModelSerializer):
             "phone_number", "categories_display", "place_region", "is_liked"
         ]
 
+    def create(self, validated_data):
+        categories_names = validated_data.pop("categories", [])
+        space = super().create(validated_data)
+        if categories_names:
+            category_objs = SpaceCategory.objects.filter(name__in=categories_names)
+            space.categories.set(category_objs)
+        return space
+
+    def update(self, instance, validated_data):
+        categories_names = validated_data.pop("categories", None)
+        space = super().update(instance, validated_data)
+        if categories_names is not None:
+            category_objs = SpaceCategory.objects.filter(name__in=categories_names)
+            space.categories.set(category_objs)
+        return space
+
     def get_categories_display(self, obj):
         return [c.name for c in obj.categories.all()]
 
@@ -75,7 +81,12 @@ class SpaceSerializer(serializers.ModelSerializer):
         )
 
     def validate_atmosphere(self, value):
-        return _norm_to_list(value)
+        # Ensure value is always returned as a list
+        if isinstance(value, list):
+            return value
+        if value is None:
+            return []
+        return [value]
 
     def validate(self, attrs):
         # categories → SpaceCategory 객체 리스트로 변환
@@ -112,33 +123,3 @@ class SpaceSerializer(serializers.ModelSerializer):
                 if field not in attrs and hasattr(self.instance, field):
                     attrs[field] = getattr(self.instance, field)
         return attrs
-
-    def create(self, validated_data):
-        categories = validated_data.pop("categories", [])
-        equipments = validated_data.pop("equipments", [])
-        preferred_categories = validated_data.pop("preferred_categories", [])
-        space = super().create(validated_data)
-        if categories:
-            space.categories.set(categories)
-        if equipments:
-            space.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
-        if preferred_categories:
-            space.preferred_categories.set(preferred_categories)
-        return space
-
-    def update(self, instance, validated_data):
-        categories = validated_data.pop("categories", None)
-        equipments = validated_data.pop("equipments", None)
-        preferred_categories = validated_data.pop("preferred_categories", None)
-        space = super().update(instance, validated_data)
-        if categories is not None:
-            space.categories.set(categories)
-        if equipments is not None:
-            space.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
-        if preferred_categories is not None:
-            space.preferred_categories.set(preferred_categories)
-        return space

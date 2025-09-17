@@ -83,6 +83,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 """,
         tags=["Space"]
     )
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         if Space.objects.filter(user=request.user).exists():
             return bad_request("이미 공간 프로필이 있습니다.", "user")
@@ -104,6 +105,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 """,
         tags=["Space"]
     )
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         space = self.get_object()
         if not (request.user.is_superuser or request.user.id == space.user_id):
@@ -126,6 +128,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
 """,
         tags=["Space"]
     )
+    @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
         space = self.get_object()
         if not (request.user.is_superuser or request.user.id == space.user_id):
