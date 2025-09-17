@@ -102,7 +102,7 @@ class SpaceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not all(isinstance(cat, str) for cat in categories_names):
                 raise serializers.ValidationError({"categories": "카테고리는 반드시 이름(문자열) 배열로 보내야 합니다."})
-            categories = Category.objects.filter(name__in=categories_names)
+            categories = SpaceCategory.objects.filter(name__in=categories_names)
             if len(categories) != len(categories_names):
                 found_names = set(categories.values_list("name", flat=True))
                 not_found = set(categories_names) - found_names
