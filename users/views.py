@@ -15,15 +15,18 @@ from spaces.models import Space
 from spaces.serializers import SpaceSerializer
 
 
+# 에러 포맷 통일
 def bad_request(detail: str, field: str = "non_field_error", extra=None):
     payload = {"detail": detail, "code": "invalid_param", "field": field}
     if extra:
         payload["error"] = extra
     return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
+
 def forbidden(detail: str, field: str = "user_pk"):
     payload = {"detail": detail, "code": "permission_denied", "field": field}
     return Response(payload, status=status.HTTP_403_FORBIDDEN)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -37,14 +40,14 @@ class UserViewSet(viewsets.ModelViewSet):
     # ✅ 카카오 로그인 콜백
     @swagger_auto_schema(
         operation_summary="카카오 로그인 콜백",
-        operation_description="카카오 OAuth 인가 코드를 받아 access token을 교환하고, 카카오 사용자 정보를 조회한 뒤 서비스 사용자로 등록/로그인 처리합니다. 최종적으로 서비스용 accessToken과 사용자 정보를 반환합니다.",
+        operation_description="카카오 OAuth 인가 코드를 받아 access token을 교환하고, 카카오 사용자 정보를 조회한 뒤 서비스 사용자로 등록/로그인 처리합니다.",
         manual_parameters=[
             openapi.Parameter(
                 name="code",
                 in_=openapi.IN_QUERY,
                 type=openapi.TYPE_STRING,
                 description="카카오 OAuth redirect 후 전달된 authorization code",
-                required=True
+                required=True,
             )
         ],
         responses={
@@ -54,13 +57,13 @@ class UserViewSet(viewsets.ModelViewSet):
                     "application/json": {
                         "accessToken": "string",
                         "user": {"id": 1, "username": "user", "role": "artist", "phone_number": "010-0000-0000"},
-                        "isOnboarding": True
+                        "isOnboarding": True,
                     }
-                }
+                },
             ),
-            400: "bad request"
+            400: "bad request",
         },
-        tags=["Auth"]
+        tags=["Auth"],
     )
     @action(methods=["get"], detail=False, url_path="auth/kakao/callback")
     def kakao_callback(self, request):
@@ -105,7 +108,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
         user, created = User.objects.get_or_create(
             kakao_id=str(kakao_id),
-            defaults={"role": None, "is_active": True, "is_staff": False, "phone_number": phone_number},
+            defaults={
+                "role": None,
+                "is_active": True,
+                "is_staff": False,
+                "phone_number": phone_number,
+            },
         )
         if not created and not user.phone_number and phone_number:
             user.phone_number = phone_number
@@ -116,16 +124,16 @@ class UserViewSet(viewsets.ModelViewSet):
 
         # 온보딩 3가지 판단
         is_onboarding = (
-            not user.role or
-            not user.phone_number or
-            not user.kakao_id or user.kakao_id == ""
+            not user.role or not user.phone_number or not user.kakao_id or user.kakao_id == ""
         )
 
         is_artistonboarding = None
         if user.role == "artist":
             try:
                 artist = Artist.objects.get(user=user)
-                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get("artist_onboarding", True)
+                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get(
+                    "artist_onboarding", True
+                )
             except Artist.DoesNotExist:
                 artist_onboarding = True
             is_artistonboarding = is_onboarding or artist_onboarding
@@ -134,25 +142,30 @@ class UserViewSet(viewsets.ModelViewSet):
         if user.role == "space":
             try:
                 space = Space.objects.get(user=user)
-                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get("space_onboarding", True)
+                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get(
+                    "space_onboarding", True
+                )
             except Space.DoesNotExist:
                 space_onboarding = True
             is_spaceonboarding = is_onboarding or space_onboarding
 
-        return Response({
-            "accessToken": token.key,
-            "user": user_data,
-            "isOnboarding": is_onboarding,
-            "is_artistonboarding": is_artistonboarding,
-            "is_spaceonboarding": is_spaceonboarding,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "accessToken": token.key,
+                "user": user_data,
+                "isOnboarding": is_onboarding,
+                "is_artistonboarding": is_artistonboarding,
+                "is_spaceonboarding": is_spaceonboarding,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     # ✅ 로그아웃
     @swagger_auto_schema(
         operation_summary="카카오 로그아웃",
         operation_description="카카오 인증 토큰을 삭제하여 로그아웃 처리합니다.",
         responses={200: "Logged out successfully."},
-        tags=["Auth"]
+        tags=["Auth"],
     )
     @action(methods=["post"], detail=False, url_path="auth/kakao/logout")
     def kakao_logout(self, request):
@@ -164,65 +177,37 @@ class UserViewSet(viewsets.ModelViewSet):
         operation_summary="내 정보 조회",
         operation_description="현재 로그인한 사용자의 정보를 반환합니다.",
         responses={200: UserSerializer},
-        tags=["User"]
+        tags=["User"],
     )
-    
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         return Response(UserSerializer(instance).data)
-    # ✅ 내 role 등록
-    @swagger_auto_schema(
-        operation_summary="내 role 등록/수정",
-        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록하거나 수정합니다.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
-            },
-            required=['role']
-        ),
-        responses={200: UserSerializer},
-        tags=["User"]
-    )
-    @action(detail=False, methods=["post", "patch"], url_path="type")
-    def set_role(self, request):
-        role = request.data.get("role")
-        if role not in ["artist", "space"]:
-            return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
-        request.user.role = role
-        request.user.save()
-        return Response(UserSerializer(request.user).data, status=200)
 
-    set_role.schema = None  # swagger_auto_schema를 제거
-
-    # 또는 아래처럼 각각 지정
+    # ✅ 내 role 등록 (POST)
     @swagger_auto_schema(
-        method='post',
+        method="post",
         operation_summary="내 role 등록",
-        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록합니다.",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 최초 등록합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
-            },
-            required=['role']
+            properties={"role": openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")},
+            required=["role"],
         ),
         responses={200: UserSerializer},
-        tags=["User"]
+        tags=["User"],
     )
+    # ✅ 내 role 수정 (PATCH)
     @swagger_auto_schema(
-        method='patch',
+        method="patch",
         operation_summary="내 role 수정",
         operation_description="현재 로그인한 사용자의 role(artist/space)을 수정합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
-            },
-            required=['role']
+            properties={"role": openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")},
+            required=["role"],
         ),
         responses={200: UserSerializer},
-        tags=["User"]
+        tags=["User"],
     )
     @action(detail=False, methods=["post", "patch"], url_path="type")
     def set_role(self, request):
@@ -239,13 +224,11 @@ class UserViewSet(viewsets.ModelViewSet):
         operation_description="현재 로그인한 사용자의 전화번호를 등록합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'phone_number': openapi.Schema(type=openapi.TYPE_STRING, description="전화번호")
-            },
-            required=['phone_number']
+            properties={"phone_number": openapi.Schema(type=openapi.TYPE_STRING, description="전화번호")},
+            required=["phone_number"],
         ),
         responses={200: UserSerializer},
-        tags=["User"]
+        tags=["User"],
     )
     @action(detail=False, methods=["post"], url_path="phone")
     def set_phone(self, request):
@@ -255,13 +238,14 @@ class UserViewSet(viewsets.ModelViewSet):
         request.user.phone_number = phone_number
         request.user.save()
         return Response(UserSerializer(request.user).data)
-    
+
+    # ✅ 유저 생성
     @swagger_auto_schema(
         operation_summary="유저 생성",
         operation_description="새로운 유저를 생성합니다.",
         request_body=UserSerializer,
         responses={201: UserSerializer, 400: "유효성 오류"},
-        tags=["User"]
+        tags=["User"],
     )
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
@@ -270,12 +254,13 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(ser.data, status=status.HTTP_201_CREATED)
         return bad_request(str(ser.errors))
 
+    # ✅ 유저 정보 부분 수정
     @swagger_auto_schema(
         operation_summary="유저 정보 부분 수정",
         operation_description="특정 유저 정보를 부분 수정합니다.",
         request_body=UserSerializer,
         responses={200: UserSerializer, 400: "유효성 오류"},
-        tags=["User"]
+        tags=["User"],
     )
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -285,30 +270,33 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(ser.data, status=200)
         return bad_request(str(ser.errors))
 
+    # ✅ 유저 삭제
     @swagger_auto_schema(
         operation_summary="유저 삭제",
         operation_description="특정 유저를 삭제합니다.",
         responses={204: "삭제 성공", 403: "권한 없음"},
-        tags=["User"]
+        tags=["User"],
     )
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
-    @swagger_auto_schema(auto_schema=None) 
+
+    # list, update swagger 문서 숨기기
+    @swagger_auto_schema(auto_schema=None)
     def list(self, request, *args, **kwargs):
         pass
-    
-    @swagger_auto_schema(auto_schema=None) 
+
+    @swagger_auto_schema(auto_schema=None)
     def update(self, request, *args, **kwargs):
         pass
-    
+
+    # ✅ 내 정보(me) 조회
     @swagger_auto_schema(
         operation_summary="내 정보(me) 조회",
         operation_description="토큰 인증된 사용자의 정보를 반환합니다. (url에 id 없이 /users/me/로 접근)",
         responses={200: UserSerializer},
-        tags=["User"]
+        tags=["User"],
     )
     @action(detail=False, methods=["get"], url_path="me", permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -317,36 +305,38 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         user = request.user
 
-        # 1. 기본 유저 온보딩
+        # 기본 온보딩
         is_onboarding = (
-            not user.role or
-            not user.phone_number or
-            not user.kakao_id or user.kakao_id == ""
+            not user.role or not user.phone_number or not user.kakao_id or user.kakao_id == ""
         )
 
-        # 2. 아티스트 온보딩 (유저 온보딩 + 아티스트 프로필 온보딩)
         is_artistonboarding = None
         if user.role == "artist":
             try:
                 artist = Artist.objects.get(user=user)
-                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get("artist_onboarding", True)
+                artist_onboarding = ArtistSerializer(artist, context={"request": request}).data.get(
+                    "artist_onboarding", True
+                )
             except Artist.DoesNotExist:
                 artist_onboarding = True
             is_artistonboarding = is_onboarding or artist_onboarding
 
-        # 3. 스페이스 온보딩 (유저 온보딩 + 스페이스 프로필 온보딩)
         is_spaceonboarding = None
         if user.role == "space":
             try:
                 space = Space.objects.get(user=user)
-                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get("space_onboarding", True)
+                space_onboarding = SpaceSerializer(space, context={"request": request}).data.get(
+                    "space_onboarding", True
+                )
             except Space.DoesNotExist:
                 space_onboarding = True
             is_spaceonboarding = is_onboarding or space_onboarding
 
-        return Response({
-            "user": UserSerializer(user).data,
-            "isOnboarding": is_onboarding,
-            "is_artistonboarding": is_artistonboarding,
-            "is_spaceonboarding": is_spaceonboarding,
-        })
+        return Response(
+            {
+                "user": UserSerializer(user).data,
+                "isOnboarding": is_onboarding,
+                "is_artistonboarding": is_artistonboarding,
+                "is_spaceonboarding": is_spaceonboarding,
+            }
+        )
