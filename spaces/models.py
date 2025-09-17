@@ -25,7 +25,7 @@ class Space(models.Model):
     capacity_standing = models.IntegerField(blank=True, null=True)
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
-    # 단수형 필드명 유지 (입력용, 실제 저장은 SpaceImage로)
+    # 단수형 필드명 유지 (입력용, 여러 장 순차 저장)
     place_image = models.ImageField(upload_to="spaces/place/", blank=True, null=True)
     # 여러 이미지의 URL을 배열로 저장 (출력용)
     place_image_url = models.JSONField(default=list, blank=True)
@@ -63,43 +63,52 @@ class Space(models.Model):
     def __str__(self):
         return self.place_name
 
-    def update_place_image_url(self):
-        # 절대 URL로 변환
-        urls = []
-        for img in self.images.all():
-            if img.image:
-                if hasattr(img.image, 'url'):
-                    url = img.image.url
-                    if not url.startswith("http"):
-                        url = settings.MEDIA_URL + url.lstrip("/")
-                    # 절대 URL로 변환
-                    request = getattr(self, '_request', None)
-                    if request:
-                        url = request.build_absolute_uri(url)
-                    else:
-                        # Fallback: 도메인 직접 지정 (환경에 맞게 수정)
-                        url = settings.MEDIA_URL + img.image.name
-                        if hasattr(settings, "SITE_DOMAIN"):
-                            url = settings.SITE_DOMAIN.rstrip("/") + url
-                    urls.append(url)
-        self.place_image_url = urls
+    def add_place_images(self, image_files, request=None):
+        """
+        여러 장 이미지를 순차적으로 place_image에 저장하고,
+        각 이미지의 절대 URL을 place_image_url 배열에 append.
+        중복 URL은 자동 제거.
+        """
+        url_list = self.place_image_url or []
+        for img in image_files:
+            self.place_image.save(img.name, img, save=True)
+            # 절대 URL 생성
+            url = self.place_image.url
+            if not url.startswith("http"):
+                if hasattr(settings, "SITE_DOMAIN"):
+                    url = settings.SITE_DOMAIN.rstrip("/") + url
+                else:
+                    url = settings.MEDIA_URL + self.place_image.name
+            if url not in url_list:
+                url_list.append(url)
+        # 중복 제거
+        url_list = list(dict.fromkeys(url_list))
+        self.place_image_url = url_list
         self.save(update_fields=["place_image_url"])
 
-class SpaceImage(models.Model):
-    space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name='images')
-    image = models.ImageField(upload_to="spaces/place/")
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    def __str__(self):
-        return self.image.url if self.image else "No Image"
+    def clear_place_images(self):
+        """
+        모든 이미지 URL을 비우고, 실제 파일도 삭제(옵션).
+        """
+        self.place_image.delete(save=False)
+        self.place_image_url = []
+        self.save(update_fields=["place_image_url"])
 
-# signals.py (같은 파일에 둬도 무방)
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
+# class SpaceImage(models.Model):
+#     space = models.ForeignKey(Space, on_delete=models.CASCADE, related_name='images')
+#     image = models.ImageField(upload_to="spaces/place/")
+#     uploaded_at = models.DateTimeField(auto_now_add=True)
+#     def __str__(self):
+#         return self.image.url if self.image else "No Image"
 
-@receiver(post_save, sender=SpaceImage)
-def update_space_image_url_on_save(sender, instance, **kwargs):
-    instance.space.update_place_image_url()
+# # signals.py (같은 파일에 둬도 무방)
+# from django.db.models.signals import post_save, post_delete
+# from django.dispatch import receiver
 
-@receiver(post_delete, sender=SpaceImage)
-def update_space_image_url_on_delete(sender, instance, **kwargs):
-    instance.space.update_place_image_url()
+# @receiver(post_save, sender=SpaceImage)
+# def update_space_image_url_on_save(sender, instance, **kwargs):
+#     instance.space.update_place_image_url()
+
+# @receiver(post_delete, sender=SpaceImage)
+# def update_space_image_url_on_delete(sender, instance, **kwargs):
+#     instance.space.update_place_image_url()
