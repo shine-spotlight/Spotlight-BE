@@ -191,8 +191,8 @@ class UserViewSet(viewsets.ModelViewSet):
         if role not in ["artist", "space"]:
             return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
         # 기존: 최초 1회만 설정
-        if request.user.role:
-             return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
+        # if request.user.role:
+        #      return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
         # 변경: 언제든 변경 가능
         request.user.role = role
         request.user.save()
