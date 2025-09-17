@@ -8,6 +8,11 @@ class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
+    def create(self, validated_data):
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        return super().update(instance, validated_data)
     categories_display = serializers.SerializerMethodField(read_only=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     equipments = serializers.ListField(

@@ -118,17 +118,7 @@ class ArtistSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        categories_names = validated_data.pop("categories", [])
-        artist = super().create(validated_data)
-        if categories_names:
-            category_objs = Category.objects.filter(name__in=categories_names)
-            artist.categories.set(category_objs)
-        return artist
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        categories_names = validated_data.pop("categories", None)
-        artist = super().update(instance, validated_data)
-        if categories_names is not None:
-            category_objs = Category.objects.filter(name__in=categories_names)
-            artist.categories.set(category_objs)
-        return artist
+        return super().update(instance, validated_data)
