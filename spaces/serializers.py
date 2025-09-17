@@ -7,6 +7,7 @@ from equipmentcategories.models import EquipmentCategory
 import json
 import ast
 
+
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
 

@@ -6,7 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-
+from categories.models import Category
 from .models import Space
 from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
