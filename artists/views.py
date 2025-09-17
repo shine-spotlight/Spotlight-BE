@@ -32,36 +32,38 @@ def _norm_to_list(value):
     return [s] if s else []
 
 def _norm_name(name: str) -> str:
+    # 공백 정리 및 소문자 변환
     return " ".join(str(name).strip().split()).lower()
 
 def _norm_json(value, field="value"):
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
-        return list(value)
+        # 리스트 내부 값도 정규화
+        return [_norm_name(v) if isinstance(v, str) else v for v in value]
     if isinstance(value, dict):
         return value
     if isinstance(value, str):
         s = value.strip()
         if not s:
             return []
-        # JSON 파싱 시도
         try:
             parsed = json.loads(s)
-            if isinstance(parsed, (list, tuple, dict)):
+            if isinstance(parsed, (list, tuple)):
+                return [_norm_name(v) if isinstance(v, str) else v for v in parsed]
+            if isinstance(parsed, dict):
                 return parsed
         except Exception:
             pass
-        # ast.literal_eval 시도
         try:
             parsed = ast.literal_eval(s)
-            if isinstance(parsed, (list, tuple, dict)):
+            if isinstance(parsed, (list, tuple)):
+                return [_norm_name(v) if isinstance(v, str) else v for v in parsed]
+            if isinstance(parsed, dict):
                 return parsed
         except Exception:
             pass
-        # 마지막으로 문자열을 리스트로 감싸서 반환
-        return [s]
-    # 그 외 타입이면 리스트로 감싸서 반환
+        return [_norm_name(s)]
     return [value]
 
 class ArtistViewSet(viewsets.ModelViewSet):

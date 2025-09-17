@@ -38,7 +38,8 @@ def _norm_json(value, field="value"):
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
-        return list(value)
+        # 리스트 내부 값도 정규화
+        return [_norm_name(v) if isinstance(v, str) else v for v in value]
     if isinstance(value, dict):
         return value
     if isinstance(value, str):
@@ -47,17 +48,21 @@ def _norm_json(value, field="value"):
             return []
         try:
             parsed = json.loads(s)
-            if isinstance(parsed, (list, tuple, dict)):
+            if isinstance(parsed, (list, tuple)):
+                return [_norm_name(v) if isinstance(v, str) else v for v in parsed]
+            if isinstance(parsed, dict):
                 return parsed
         except Exception:
             pass
         try:
             parsed = ast.literal_eval(s)
-            if isinstance(parsed, (list, tuple, dict)):
+            if isinstance(parsed, (list, tuple)):
+                return [_norm_name(v) if isinstance(v, str) else v for v in parsed]
+            if isinstance(parsed, dict):
                 return parsed
         except Exception:
             pass
-        return [s]
+        return [_norm_name(s)]
     return [value]
 
 class SpaceViewSet(viewsets.ModelViewSet):
@@ -232,7 +237,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
         """
         info 액션에서 처리하던 장비/선호카테고리 등 복합 입력을 여기서 처리
         """
-        # 선호 카테고리 (ManyToMany) - name 기반
+        # 선호 카테고리 (ManyToMany) - name 기반 + 정규화
         if "preferred_categories" in request.data:
             preferred = _norm_json(request.data.get("preferred_categories"), "preferred_categories")
             if not isinstance(preferred, (list, tuple)):
@@ -244,7 +249,7 @@ class SpaceViewSet(viewsets.ModelViewSet):
             objs = SpaceCategory.objects.filter(name__in=preferred)
             space.preferred_categories.set(objs)
 
-        # 보유 장비 (선택 or 직접입력) - name 기반
+        # 보유 장비 (선택 or 직접입력) - name 기반 + 정규화
         equipments = _norm_json(request.data.get("equipments"), "equipments")
         customs = _norm_json(request.data.get("custom_equipment_categories"), "custom_equipment_categories")
         if equipments or customs:
