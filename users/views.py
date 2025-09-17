@@ -172,8 +172,8 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(UserSerializer(instance).data)
     # ✅ 내 role 등록
     @swagger_auto_schema(
-        operation_summary="내 role 등록",
-        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록합니다.",
+        operation_summary="내 role 등록/수정",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록하거나 수정합니다.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -184,7 +184,7 @@ class UserViewSet(viewsets.ModelViewSet):
         responses={200: UserSerializer},
         tags=["User"]
     )
-    @action(detail=False, methods=["post"], url_path="type")
+    @action(detail=False, methods=["post", "patch"], url_path="type")
     def set_role(self, request):
         role = request.data.get("role")
 
