@@ -3,6 +3,7 @@ from .models import Space
 from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
+from equipmentcategories.models import EquipmentCategory
 
 class SpaceSerializer(serializers.ModelSerializer):
     categories = serializers.ListField(
@@ -124,6 +125,20 @@ class SpaceSerializer(serializers.ModelSerializer):
                 not_found = set(preferred_categories_names) - found_names
                 raise serializers.ValidationError({"preferred_categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["preferred_categories"] = categories
+
+        # equipments → EquipmentCategory 객체 리스트로 변환
+        equipments_names = self.initial_data.get("equipments")
+        if equipments_names is not None:
+            if not isinstance(equipments_names, list):
+                raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
+            if not all(isinstance(eq, str) for eq in equipments_names):
+                raise serializers.ValidationError({"equipments": "장비는 반드시 이름(문자열) 배열로 보내야 합니다."})
+            equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
+            if len(equipments) != len(equipments_names):
+                found_names = set([e.name for e in equipments])
+                not_found = set(equipments_names) - found_names
+                raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
+            attrs["equipments"] = equipments
 
         # 기존 값 유지 로직 (필요시)
         if self.instance:

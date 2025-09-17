@@ -187,17 +187,51 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post", "patch"], url_path="type")
     def set_role(self, request):
         role = request.data.get("role")
-
         if role not in ["artist", "space"]:
             return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
-        # 기존: 최초 1회만 설정
-        # if request.user.role:
-        #      return forbidden("role은 최초 1회만 설정할 수 있습니다.", "role")
-        # 변경: 언제든 변경 가능
         request.user.role = role
         request.user.save()
         return Response(UserSerializer(request.user).data, status=200)
-        
+
+    set_role.schema = None  # swagger_auto_schema를 제거
+
+    # 또는 아래처럼 각각 지정
+    @swagger_auto_schema(
+        method='post',
+        operation_summary="내 role 등록",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 등록합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
+            },
+            required=['role']
+        ),
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
+    @swagger_auto_schema(
+        method='patch',
+        operation_summary="내 role 수정",
+        operation_description="현재 로그인한 사용자의 role(artist/space)을 수정합니다.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'role': openapi.Schema(type=openapi.TYPE_STRING, description="'artist' 또는 'space'")
+            },
+            required=['role']
+        ),
+        responses={200: UserSerializer},
+        tags=["User"]
+    )
+    @action(detail=False, methods=["post", "patch"], url_path="type")
+    def set_role(self, request):
+        role = request.data.get("role")
+        if role not in ["artist", "space"]:
+            return bad_request("role은 'artist' 또는 'space'만 가능합니다.", "role")
+        request.user.role = role
+        request.user.save()
+        return Response(UserSerializer(request.user).data, status=200)
 
     # ✅ 내 전화번호 수정
     @swagger_auto_schema(
