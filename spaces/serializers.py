@@ -47,7 +47,7 @@ class SpaceSerializer(serializers.ModelSerializer):
             "custom_category", "description", "capacity_seated", "capacity_standing",
             "business_registration_number", "atmosphere", "place_image", 
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
-            "is_liked", "space_onboarding",, "place_image_url"
+            "is_liked", "space_onboarding", "place_image_url"
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
