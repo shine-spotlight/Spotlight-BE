@@ -78,7 +78,12 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if Artist.objects.filter(user=request.user).exists():
             return bad_request("이미 아티스트 프로필이 있습니다.", "user")
-        return super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        serializer.save(user=request.user)
+        self._handle_m2m_fields(request, serializer.instance)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     # 아티스트 전체 수정 (PUT)
     @swagger_auto_schema(
@@ -114,9 +119,12 @@ class ArtistViewSet(viewsets.ModelViewSet):
         artist = self.get_object()
         if not (request.user.is_superuser or request.user.id == artist.user_id):
             return forbidden("본인만 수정 가능합니다")
-        response = super().update(request, *args, **kwargs)
-        self._handle_m2m_fields(request, self.get_object())
-        return response
+        partial = kwargs.pop('partial', False)
+        serializer = self.get_serializer(artist, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        serializer.save()
+        self._handle_m2m_fields(request, serializer.instance)
+        return Response(serializer.data)
 
     # 아티스트 부분 수정 (PATCH)
     @swagger_auto_schema(
@@ -145,13 +153,16 @@ class ArtistViewSet(viewsets.ModelViewSet):
 """,
         tags=["Artist"]
     )
+    @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
         artist = self.get_object()
         if not (request.user.is_superuser or request.user.id == artist.user_id):
             return forbidden("본인만 수정 가능합니다")
-        response = super().partial_update(request, *args, **kwargs)
-        self._handle_m2m_fields(request, self.get_object())
-        return response
+        serializer = self.get_serializer(artist, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)  # 반드시 호출
+        serializer.save()
+        self._handle_m2m_fields(request, serializer.instance)
+        return Response(serializer.data)
 
     # 아티스트 목록 조회 (GET)
     @swagger_auto_schema(

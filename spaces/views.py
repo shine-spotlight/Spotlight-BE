@@ -12,6 +12,7 @@ from .serializers import SpaceSerializer
 from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from spaces.models import SpaceCategory
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -269,7 +270,12 @@ class SpaceViewSet(viewsets.ModelViewSet):
         if region:
             qs = qs.filter(place_region__icontains=region)
         if category:
-            qs = qs.filter(category_id=category)
+            # category는 이름(문자열)로 받음 → id로 변환
+            try:
+                cat_obj = SpaceCategory.objects.get(name=category)
+                qs = qs.filter(categories=cat_obj)
+            except SpaceCategory.DoesNotExist:
+                return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
         if cap_min:
             qs = qs.filter(capacity_seated__gte=int(cap_min))
         if cap_max:
