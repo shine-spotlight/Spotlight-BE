@@ -13,6 +13,8 @@ from spaceequipments.models import SpaceEquipment
 from equipmentcategories.models import EquipmentCategory
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from spaces.models import SpaceCategory
+import json
+import ast
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -31,6 +33,32 @@ def _norm_to_list(value):
 
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
+
+def _norm_json(value, field="value"):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, (list, tuple, dict)):
+                return parsed
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple, dict)):
+                return parsed
+        except Exception:
+            pass
+        return [s]
+    return [value]
 
 class SpaceViewSet(viewsets.ModelViewSet):
     queryset = Space.objects.all()
@@ -204,45 +232,41 @@ class SpaceViewSet(viewsets.ModelViewSet):
         """
         info 액션에서 처리하던 장비/선호카테고리 등 복합 입력을 여기서 처리
         """
-        #선호 카테고리 (ManyToMany)
+        # 선호 카테고리 (ManyToMany) - name 기반
         if "preferred_categories" in request.data:
-            preferred = request.data.get("preferred_categories")
-            if isinstance(preferred, str):
-                import json
-                preferred = json.loads(preferred)
-            space.preferred_categories.set(preferred or [])
+            preferred = _norm_json(request.data.get("preferred_categories"), "preferred_categories")
+            if not isinstance(preferred, (list, tuple)):
+                raise ValidationError({"detail": "preferred_categories는 배열이어야 합니다", "field": "preferred_categories"})
+            exists = list(SpaceCategory.objects.filter(name__in=preferred).values_list("name", flat=True))
+            missing = set(preferred) - set(exists)
+            if missing:
+                raise ValidationError({"detail": f"존재하지 않는 카테고리: {sorted(list(missing))}", "field": "preferred_categories"})
+            objs = SpaceCategory.objects.filter(name__in=preferred)
+            space.preferred_categories.set(objs)
 
-        # 보유 장비 (선택 or 직접입력)
-        ids = request.data.get("equipment_category_ids")
-        # 문자열로 들어온 경우 파싱
-        if isinstance(ids, str):
-            import ast
-            try:
-                ids = ast.literal_eval(ids)
-            except Exception:
-                raise ValidationError({"detail": "equipment_category_ids는 배열이어야 합니다", "field": "equipment_category_ids"})
-        customs = _norm_to_list(request.data.get("custom_equipment_categories"))
-        if ids or customs:
-            to_set_ids = []
-            if ids:
-                if not isinstance(ids, (list, tuple)):
-                    raise ValidationError({"detail": "equipment_category_ids는 배열이어야 합니다", "field": "equipment_category_ids"})
-                exists = list(EquipmentCategory.objects.filter(id__in=ids).values_list("id", flat=True))
-                missing = set(ids) - set(exists)
+        # 보유 장비 (선택 or 직접입력) - name 기반
+        equipments = _norm_json(request.data.get("equipments"), "equipments")
+        customs = _norm_json(request.data.get("custom_equipment_categories"), "custom_equipment_categories")
+        if equipments or customs:
+            to_set_objs = []
+            if equipments:
+                if not isinstance(equipments, (list, tuple)):
+                    raise ValidationError({"detail": "equipments는 배열이어야 합니다", "field": "equipments"})
+                exists = list(EquipmentCategory.objects.filter(name__in=equipments).values_list("name", flat=True))
+                missing = set(equipments) - set(exists)
                 if missing:
-                    raise ValidationError({"detail": f"유효하지 않은 id: {sorted(list(missing))}", "field": "equipment_category_ids"})
-                to_set_ids.extend(exists)
-            if not ids and customs:
+                    raise ValidationError({"detail": f"존재하지 않는 장비: {sorted(list(missing))}", "field": "equipments"})
+                to_set_objs.extend(EquipmentCategory.objects.filter(name__in=exists))
+            if customs:
                 for name in customs:
                     norm = _norm_name(name)
                     if not norm:
                         continue
                     obj, _ = EquipmentCategory.objects.get_or_create(name=norm)
-                    to_set_ids.append(obj.id)
+                    to_set_objs.append(obj)
             SpaceEquipment.objects.filter(space=space).delete()
-            categories = EquipmentCategory.objects.filter(id__in=to_set_ids)
             SpaceEquipment.objects.bulk_create(
-                [SpaceEquipment(space=space, category=cat) for cat in categories]
+                [SpaceEquipment(space=space, category=cat) for cat in to_set_objs]
             )
 
     # 공간 필터링 (커스텀)
