@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Space, SpaceImage
+from .models import Space
 from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
