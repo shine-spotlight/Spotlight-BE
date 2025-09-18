@@ -73,34 +73,92 @@ class DemandViewSet(viewsets.ViewSet):
         ag = self._parse_age_group2(request.query_params.get("age_group"))
         gd = self._parse_gender2(request.query_params.get("gender"))
         if ag["mode"] == "invalid":
-            return bad_request("age_group 형식이 올바르지 않습니다.", "age_group")
+            return bad_request("age_group 형식이 올바르지 않습니다. (-1/10/20/.../미상)", "age_group")
         if gd["mode"] == "invalid":
-            return bad_request("gender 형식이 올바르지 않습니다.", "gender")
+            return bad_request("gender 형식이 올바르지 않습니다. (-1/0/1/2/미상)", "gender")
 
         as_of = request.query_params.get("as_of")
 
         try:
-            sql = """
-                SELECT month, forecast, yhat_lower, yhat_upper
-                FROM analytics.demand_forecast_asof
-                WHERE as_of_month = CAST(? AS DATE)
-                  AND LOWER(region) = ?
-                  AND LOWER(genre)  = ?
-            """
             with get_duck_conn() as con:
+                # 1차 시도: region + genre
+                sql = """
+                    SELECT month, forecast, yhat_lower, yhat_upper
+                    FROM analytics.demand_forecast_asof
+                    WHERE as_of_month = CAST(? AS DATE)
+                      AND LOWER(region) = ?
+                      AND LOWER(genre)  = ?
+                """
                 rows = con.execute(sql, [as_of, region, genre]).fetchall()
-                # fallback: (ALL),(ALL)
-                if not rows:
-                    rows = con.execute(sql, [as_of, "(all)", "(all)"]).fetchall()
+                items = [{
+                    "month": str(r[0])[:10],
+                    "forecast": r[1],
+                    "yhat_lower": r[2],
+                    "yhat_upper": r[3],
+                } for r in (rows or [])]
+
+                # Fallback 1: (ALL, genre) → 점유율로 보정
+                if not items:
+                    agg_sql = """
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = ?
+                        ORDER BY month
+                    """
+                    agg_rows = con.execute(agg_sql, [as_of, genre]).fetchall()
+                    if agg_rows:
+                        # 최근 3개월 수요 기반 점유율 계산
+                        share_sql = """
+                            WITH mx AS (
+                                SELECT date_trunc('month', MAX(month)) AS end_month
+                                FROM analytics.demand_modeling_grid
+                            )
+                            SELECT region, SUM(demand) AS total_demand
+                            FROM analytics.demand_modeling_grid, mx
+                            WHERE month >= (mx.end_month - INTERVAL 2 MONTH)
+                              AND month <= mx.end_month
+                              AND LOWER(genre) = ?
+                              AND age_group = -1 AND gender = -1
+                            GROUP BY region
+                            HAVING SUM(demand) > 0
+                        """
+                        shares = con.execute(share_sql, [genre]).fetchall()
+                        total = sum(r[1] for r in shares)
+                        weight = 0
+                        for reg, demand in shares:
+                            if reg.lower() == region:
+                                weight = demand / total
+                                break
+                        if weight > 0:
+                            items = [{
+                                "month": str(r[0])[:10],
+                                "forecast": r[1] * weight if r[1] else None,
+                                "yhat_lower": r[2] * weight if r[2] else None,
+                                "yhat_upper": r[3] * weight if r[3] else None,
+                            } for r in agg_rows]
+
+                # Fallback 2: (ALL, ALL)
+                if not items:
+                    fallback_sql2 = """
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = '(all)'
+                        ORDER BY month
+                    """
+                    rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                    items = [{
+                        "month": str(r[0])[:10],
+                        "forecast": r[1],
+                        "yhat_lower": r[2],
+                        "yhat_upper": r[3],
+                    } for r in (rows or [])]
+
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
-
-        items = [{
-            "month": str(r[0])[:10],
-            "forecast": r[1],
-            "yhat_lower": r[2],
-            "yhat_upper": r[3],
-        } for r in (rows or [])]
 
         if not items:
             return bad_request("해당 조합의 예측 결과가 없습니다.", "filters")
@@ -141,7 +199,6 @@ class DemandViewSet(viewsets.ViewSet):
             with get_duck_conn() as con:
                 rec = con.execute(sql, [as_of, region, genre]).fetchone()
                 if not rec or rec[0] is None:
-                    # fallback: (ALL),(ALL)
                     rec = con.execute(sql, [as_of, "(all)", "(all)"]).fetchone()
             if not rec or rec[0] is None:
                 return bad_request("해당 조건의 shortage_index가 없습니다.", "region/genre/as_of")

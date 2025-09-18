@@ -31,8 +31,12 @@ class SuggestionSerializer(serializers.ModelSerializer):
             "is_accepted", "is_read",
             "receiver_phone", "opponent_image",
             "created_at", "updated_at",
+            "artist_name", "space_name"  # ✅ name 필드도 함께 노출
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "created_at", "updated_at",
+            "artist_obj", "space_obj", "artist_name", "space_name"
+        ]
 
     # 요청자 기준으로 상대방 정보만 직렬화 (시리얼라이저)
     # def get_artist_obj(self, obj):

@@ -47,9 +47,20 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = SuggestionListSerializer(page, many=True, context={"request": request})
-            return self.get_paginated_response(serializer.data)
+            data = serializer.data
+            # artist_obj, space_obj, opponent_image 추가
+            for idx, obj in enumerate(page):
+                data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
+                data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+                data[idx]["opponent_image"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image(obj)
+            return self.get_paginated_response(data)
         serializer = SuggestionListSerializer(qs, many=True, context={"request": request})
-        return Response(serializer.data)
+        data = serializer.data
+        for idx, obj in enumerate(qs):
+            data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
+            data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+            data[idx]["opponent_image"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image(obj)
+        return Response(data)
 
     @swagger_auto_schema(
         operation_summary="보낸 제안함",
@@ -67,9 +78,17 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = SuggestionListSerializer(page, many=True, context={"request": request})
-            return self.get_paginated_response(serializer.data)
+            data = serializer.data
+            for idx, obj in enumerate(page):
+                data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
+                data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+            return self.get_paginated_response(data)
         serializer = SuggestionListSerializer(qs, many=True, context={"request": request})
-        return Response(serializer.data)
+        data = serializer.data
+        for idx, obj in enumerate(qs):
+            data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
+            data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+        return Response(data)
 
     def _get_my_artist(self, user):
         try:

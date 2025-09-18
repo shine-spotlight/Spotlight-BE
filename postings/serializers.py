@@ -72,6 +72,7 @@ class PostingSerializer(serializers.ModelSerializer):
             "categories", "category_names",
             "price_type", "price_amount", "date", "created_at",
             "place_region"  # ✅ 그대로 유지
+            
         ]
         read_only_fields = [
             "id", "created_at", "space", "category_names",
