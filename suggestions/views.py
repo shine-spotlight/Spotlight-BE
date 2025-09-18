@@ -60,6 +60,7 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
             data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
             data[idx]["opponent_image"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image(obj)
+            data[idx]["opponent_image_url"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image_url(obj)
         return Response(data)
 
     @swagger_auto_schema(
@@ -82,12 +83,16 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             for idx, obj in enumerate(page):
                 data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
                 data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+                data[idx]["opponent_image_url"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image_url(obj)
+
             return self.get_paginated_response(data)
         serializer = SuggestionListSerializer(qs, many=True, context={"request": request})
         data = serializer.data
         for idx, obj in enumerate(qs):
             data[idx]["artist_obj"] = SuggestionSerializer(obj, context={"request": request}).get_artist_obj(obj)
             data[idx]["space_obj"] = SuggestionSerializer(obj, context={"request": request}).get_space_obj(obj)
+            data[idx]["opponent_image_url"] = SuggestionSerializer(obj, context={"request": request}).get_opponent_image_url(obj)
+
         return Response(data)
 
     def _get_my_artist(self, user):
