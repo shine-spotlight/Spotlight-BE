@@ -21,7 +21,7 @@ def _norm_to_list(value):
 
 class PostingSerializer(serializers.ModelSerializer):
     space_id = serializers.PrimaryKeyRelatedField(
-        queryset=Space.objects.all(), source="space", write_only=True, required=True
+        queryset=Space.objects.all(), source="space", write_only=True, required=False
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
     space_address = serializers.CharField(source="space.address", read_only=True)

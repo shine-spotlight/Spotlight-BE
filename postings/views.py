@@ -49,10 +49,13 @@ class PostingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
         operation_description="""
-새로운 공연 공고를 등록합니다. (공간 소유자 또는 관리자만 가능)
+새로운 공연 공고를 등록합니다. (공간 소유자만 가능)
+
+**중요**
+- 프론트는 space_id를 절대 body에 넣지 마세요. 서버에서 토큰 기반으로 자동 매핑합니다.
+- 공간 소유자(role=space)만 생성할 수 있습니다.
 
 **필수 필드:**
-- space_id: 공간 PK (본인 소유 공간만 가능)
 - title: 공고 제목
 - description: 공고 설명
 - categories: 카테고리 PK 배열
