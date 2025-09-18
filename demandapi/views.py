@@ -4,6 +4,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .duckdb_adapter import get_forecast, get_duck_conn
+import duckdb  # 추가
 
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
@@ -116,8 +117,10 @@ class DemandViewSet(viewsets.ViewSet):
                     else (0 if gd["mode"]=="value" and gd["value"]==0 else (gd["value"] if gd["mode"]=="value" else None))
                 )
             )
+        except duckdb.Error as e:
+            return bad_request(f"DuckDB 연결/쿼리 오류: {e}", "duckdb")
         except Exception as e:
-            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+            return bad_request(f"예상치 못한 오류: {e}", "unknown")
 
         items = [{
             "month": str(r.get("month"))[:10],
@@ -129,17 +132,21 @@ class DemandViewSet(viewsets.ViewSet):
         if not items:
             return bad_request("해당 조합의 예측 결과가 없습니다. 필터(-1/미상/(ALL))를 확인하세요.", "filters")
 
+        # age_group, gender를 예시와 동일하게 문자열로 반환
+        age_group_str = (
+            "전체" if (ag["mode"]=="value" and ag["value"]==-1)
+            else ("미상" if ag["mode"]=="unknown" else (str(ag["value"]) if ag["mode"]=="value" else None))
+        )
+        gender_str = (
+            "전체" if (gd["mode"]=="value" and gd["value"]==-1)
+            else ("알 수 없음" if (gd["mode"]=="value" and gd["value"]==0) else (self._gender_label(gd["value"]) if gd["mode"]=="value" else None))
+        )
+
         return Response({
             "region": raw_region,
             "genre": raw_genre,
-            "age_group": (
-                "전체" if (ag["mode"]=="value" and ag["value"]==-1)
-                else ("미상" if ag["mode"]=="unknown" else (ag["value"] if ag["mode"]=="value" else None))
-            ),
-            "gender": (
-                "전체" if (gd["mode"]=="value" and gd["value"]==-1)
-                else ("알 수 없음" if (gd["mode"]=="value" and gd["value"]==0) else (self._gender_label(gd["value"]) if gd["mode"]=="value" else None))
-            ),
+            "age_group": age_group_str,
+            "gender": gender_str,
             "as_of": as_of,
             "items": items
         })
@@ -180,7 +187,7 @@ class DemandViewSet(viewsets.ViewSet):
             sql = """
                 SELECT shortage_index
                 FROM analytics.shortage_index_asof
-                WHERE as_of_month = DATE ?
+                WHERE as_of_month = ?  -- DuckDB는 문자열 날짜 비교 가능
                   AND LOWER(region) = ?
                   AND LOWER(genre)  = ?
                 LIMIT 1
@@ -190,12 +197,17 @@ class DemandViewSet(viewsets.ViewSet):
             if not rec:
                 return bad_request("해당 조건의 shortage_index가 없습니다.", "region/genre/as_of")
             shortage_index = rec[0]
+        except duckdb.Error as e:
+            return bad_request(f"DuckDB 연결/쿼리 오류: {e}", "duckdb")
         except Exception as e:
-            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+            return bad_request(f"예상치 못한 오류: {e}", "unknown")
 
-        return Response({"region": raw_region, "genre": raw_genre, "as_of": as_of, "shortage_index": shortage_index})
-  
-        #return Response({"region": region, "genre": genre, "shortage_index": 0.73})
+        return Response({
+            "region": raw_region,
+            "genre": raw_genre,
+            "as_of": as_of,
+            "shortage_index": shortage_index
+        })
 
     @swagger_auto_schema(
         operation_summary="추천 지역/장르 조회",
@@ -272,9 +284,12 @@ class DemandViewSet(viewsets.ViewSet):
                 if not end_month:
                     return bad_request("analytics.demand_modeling_grid에 데이터가 없습니다.", "duckdb")
 
+                # DuckDB LIMIT 파라미터 바인딩 불가 → int(top_n) 보장 후 f-string 안전 사용
+                safe_limit = int(top_n)
+
                 if genre and not region:
                     # 장르 → 최근3개월 지역 TOP N (전체 레벨에서 집계: age_group=-1, gender=-1)
-                    sql = f"""
+                    sql = """
                         SELECT region, SUM(demand) AS total_orders
                         FROM analytics.demand_modeling_grid
                         WHERE month >= ? AND month < ?
@@ -284,21 +299,21 @@ class DemandViewSet(viewsets.ViewSet):
                           AND region IS NOT NULL
                         GROUP BY region
                         ORDER BY total_orders DESC NULLS LAST
-                        LIMIT {top_n}
-                    """
+                        LIMIT {}
+                    """.format(safe_limit)
                     rows = con.execute(sql, [start_month, end_month_excl, genre]).fetchall()
                     results = [{"region": r[0], "total_orders": int(r[1]) if r[1] is not None else 0} for r in rows]
                     return Response({
                         "pivot": "by_genre",
                         "genre": raw_genre,  # 응답에 장르명 포함
                         "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
-                        "top_n": top_n,
+                        "top_n": safe_limit,
                         "results": results
                     })
 
                 if region and not genre:
                     # 지역 → 최근3개월 장르 TOP N (전체 레벨에서 집계)
-                    sql = f"""
+                    sql = """
                         SELECT genre, SUM(demand) AS total_orders
                         FROM analytics.demand_modeling_grid
                         WHERE month >= ? AND month < ?
@@ -308,17 +323,19 @@ class DemandViewSet(viewsets.ViewSet):
                           AND genre IS NOT NULL
                         GROUP BY genre
                         ORDER BY total_orders DESC NULLS LAST
-                        LIMIT {top_n}
-                    """
+                        LIMIT {}
+                    """.format(safe_limit)
                     rows = con.execute(sql, [start_month, end_month_excl, region]).fetchall()
                     results = [{"genre": r[0], "total_orders": int(r[1]) if r[1] is not None else 0} for r in rows]
                     return Response({
                         "pivot": "by_region",
                         "region": raw_region,  
                         "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
-                        "top_n": top_n,
+                        "top_n": safe_limit,
                         "results": results
                     })
 
+        except duckdb.Error as e:
+            return bad_request(f"DuckDB 연결/쿼리 오류: {e}", "duckdb")
         except Exception as e:
-            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+            return bad_request(f"예상치 못한 오류: {e}", "unknown")
