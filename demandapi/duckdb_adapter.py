@@ -64,7 +64,7 @@ def get_forecast(region=None, genre=None, age_group=None, gender=None, as_of=Non
                 return []
 
         # as_of
-        where.append("as_of_month = DATE ?")
+        where.append("as_of_month = ?")
         params.append(as_of)
 
         # region / genre: LOWER 비교, None은 IS NULL
