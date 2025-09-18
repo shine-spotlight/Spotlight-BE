@@ -238,6 +238,72 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         )
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+    from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from rest_framework.decorators import action
+from rest_framework import status
+from rest_framework.response import Response
+from django.db import transaction
+
+class SuggestionViewSet(viewsets.ModelViewSet):
+    # ... 기존 코드 생략 ...
+
+    @swagger_auto_schema(
+        operation_summary="제안 거절 처리",
+        operation_description="""
+제안의 수신자(공간 또는 아티스트)만 해당 제안을 거절할 수 있습니다.
+
+- 아티스트가 보낸 제안: 공간 소유자만 거절 가능  
+- 공간이 보낸 제안: 아티스트 본인만 거절 가능  
+- 이미 수락/거절된 제안은 다시 상태 변경할 수 없습니다.
+""",
+        responses={
+            200: SuggestionSerializer,
+            403: openapi.Response(
+                description="권한 없음",
+                examples={"application/json": {
+                    "detail": "제안 수신자만 거절할 수 있습니다.",
+                    "code": "permission_denied",
+                    "field": "reject"
+                }}
+            )
+        },
+        tags=["Suggestion"]
+    )
+    @action(detail=True, methods=["patch"], url_path="reject")
+    @transaction.atomic
+    def reject(self, request, pk=None):
+        """
+        제안 거절 처리: 제안의 수신자만 가능
+        """
+        suggestion = self.get_object()
+        # 수신자 판별
+        if suggestion.sender_type == Suggestion.SENDER_ARTIST:
+            receiver_user_id = suggestion.space.user_id
+        else:
+            receiver_user_id = suggestion.artist.user_id
+
+        if not request.user.is_superuser and request.user.id != receiver_user_id:
+            return forbidden("제안 수신자만 거절할 수 있습니다.", "reject")
+
+        # 수락/거절 상태가 아직 없는 경우만 처리
+        if suggestion.is_accepted is None:
+            suggestion.is_accepted = False
+            suggestion.save(update_fields=["is_accepted", "updated_at"])
+
+            # 상대에게 알림
+            if suggestion.sender_type == Suggestion.SENDER_ARTIST:
+                target_user = suggestion.artist.user
+            else:
+                target_user = suggestion.space.user
+
+            self._notify(
+                user=target_user,
+                content=f"'{suggestion}' 제안이 거절되었습니다.",
+                target_link=f"/api/v1/suggestions/{suggestion.id}/"
+            )
+
+        return Response(self.get_serializer(suggestion).data, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
         operation_summary="제안 수락 처리",
