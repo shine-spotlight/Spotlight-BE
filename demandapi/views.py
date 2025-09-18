@@ -97,8 +97,8 @@ class DemandViewSet(viewsets.ViewSet):
                     "yhat_upper": r[3],
                 } for r in (rows or [])]
 
-                # Fallback 1: (ALL, genre)
-                if not items:
+                # ✅ 전부 None이면 fallback
+                if not items or all(r["forecast"] is None for r in items):
                     fallback_sql = """
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
@@ -114,23 +114,24 @@ class DemandViewSet(viewsets.ViewSet):
                         "yhat_lower": r[2],
                         "yhat_upper": r[3],
                     } for r in (rows or [])]
-                    if not items:
-                        # 2차 fallback: (ALL, ALL)
-                        fallback_sql2 = """
-                            SELECT month, forecast, yhat_lower, yhat_upper
-                            FROM analytics.demand_forecast_asof
-                            WHERE as_of_month = CAST(? AS DATE)
-                              AND LOWER(region) = '(all)'
-                              AND LOWER(genre)  = '(all)'
-                            ORDER BY month
-                        """
-                        rows = con.execute(fallback_sql2, [as_of]).fetchall()
-                        items = [{
-                            "month": str(r[0])[:10],
-                            "forecast": r[1],
-                            "yhat_lower": r[2],
-                            "yhat_upper": r[3],
-                        } for r in (rows or [])]
+
+                # 2차 fallback: (ALL, ALL)
+                if not items or all(r["forecast"] is None for r in items):
+                    fallback_sql2 = """
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = '(all)'
+                        ORDER BY month
+                    """
+                    rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                    items = [{
+                        "month": str(r[0])[:10],
+                        "forecast": r[1],
+                        "yhat_lower": r[2],
+                        "yhat_upper": r[3],
+                    } for r in (rows or [])]
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
