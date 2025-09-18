@@ -6,6 +6,8 @@ from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 import json
 import ast
+from django.core.files.storage import default_storage
+import os
 
 
 def _norm_name(name: str) -> str:
@@ -18,12 +20,12 @@ def _norm_name(name: str) -> str:
 #         fields = ['id', 'image', 'uploaded_at']
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 입력: place_image (단수형, 여러 장 지원)
+    # 입력: 여러 장 업로드
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
     # 출력: place_image_url (배열)
-    place_image_url = serializers.ListField(read_only=True)
+    place_image_url = serializers.ListField(read_only=True, source="place_image")
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -56,41 +58,39 @@ class SpaceSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
+        request = self.context.get("request")
         images = validated_data.pop("place_image", [])
-        categories = validated_data.pop("categories", [])
-        preferred_categories = validated_data.pop("preferred_categories", [])
         space = super().create(validated_data)
-        # SpaceImage 관련 코드 주석 처리
-        # for img in images:
-        #     SpaceImage.objects.create(space=space, image=img)
-        # 대신 모델의 add_place_images 메서드 사용
-        if images:
-            space.add_place_images(images)
-        if categories:
-            space.categories.set(categories)
-        if preferred_categories:
-            space.preferred_categories.set(preferred_categories)
-        # space.update_place_image_url()  # add_place_images에서 처리됨
+        urls = list(space.place_image) if space.place_image else []
+        for img in images:
+            filename = default_storage.save(os.path.join("spaces/place", img.name), img)
+            url = default_storage.url(filename)
+            if request is not None:
+                url = request.build_absolute_uri(url)
+            if url not in urls:
+                urls.append(url)
+        # 중복 제거
+        urls = list(dict.fromkeys(urls))
+        space.place_image = urls
+        space.save(update_fields=["place_image"])
         return space
 
     def update(self, instance, validated_data):
+        request = self.context.get("request")
         images = validated_data.pop("place_image", None)
-        categories = validated_data.pop("categories", None)
-        preferred_categories = validated_data.pop("preferred_categories", None)
         space = super().update(instance, validated_data)
-        # SpaceImage 관련 코드 주석 처리
-        # if images is not None:
-        #     instance.images.all().delete()
-        #     for img in images:
-        #         SpaceImage.objects.create(space=instance, image=img)
-        #     space.update_place_image_url()
         if images is not None:
-            instance.clear_place_images()
-            instance.add_place_images(images)
-        if categories is not None:
-            space.categories.set(categories)
-        if preferred_categories is not None:
-            space.preferred_categories.set(preferred_categories)
+            urls = list(space.place_image) if space.place_image else []
+            for img in images:
+                filename = default_storage.save(os.path.join("spaces/place", img.name), img)
+                url = default_storage.url(filename)
+                if request is not None:
+                    url = request.build_absolute_uri(url)
+                if url not in urls:
+                    urls.append(url)
+            urls = list(dict.fromkeys(urls))
+            space.place_image = urls
+            space.save(update_fields=["place_image"])
         return space
 
     def get_categories_display(self, obj):
