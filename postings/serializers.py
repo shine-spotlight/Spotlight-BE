@@ -1,18 +1,66 @@
 from rest_framework import serializers
+from django.conf import settings
 from .models import Posting
 from categories.models import Category
 from spaces.models import Space
 
+def _norm_to_list(value):
+    """
+    입력값을 항상 배열로 보정
+    - None → []
+    - list/tuple → list
+    - 문자열 → [문자열] 또는 파싱
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        s = str(value).strip()
+        # 문자열이 리스트 형태일 때 파싱
+        import ast
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple)):
+                items = list(parsed)
+            else:
+                items = [s]
+        except Exception:
+            # 쉼표로 구분된 문자열 처리
+            if "," in s:
+                items = [x for x in s.split(",")]
+            else:
+                items = [s] if s else []
+    # 정규화: 소문자, 공백제거, 빈값제거, 중복제거
+    normed = []
+    seen = set()
+    for x in items:
+        if not isinstance(x, str):
+            x = str(x)
+        v = x.strip().lower()
+        if v and v not in seen:
+            normed.append(v)
+            seen.add(v)
+    return normed
+
+
 class PostingSerializer(serializers.ModelSerializer):
     space_id = serializers.PrimaryKeyRelatedField(
-        queryset=Space.objects.all(), source="space", write_only=True, required=True
+        queryset=Space.objects.all(), source="space", write_only=True, required=False
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
     space_address = serializers.CharField(source="space.address", read_only=True)
-    categories = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(), many=True, required=False
+    place_region = serializers.CharField(source="space.place_region", read_only=True)
+
+    # ✅ ListField로 변경: Swagger에서도 array of string으로 노출됨
+    categories = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
     )
     category_names = serializers.SerializerMethodField(read_only=True)
+
+    # ✅ 이미지: 파일 업로드만 입력, URL은 자동 생성
+    posting_image = serializers.ImageField(write_only=True, required=False)
+    posting_image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Posting
@@ -23,16 +71,23 @@ class PostingSerializer(serializers.ModelSerializer):
             "posting_image", "posting_image_url",
             "categories", "category_names",
             "price_type", "price_amount", "date", "created_at",
+            "place_region"  # ✅ 그대로 유지
+            
         ]
-        read_only_fields = ["id", "created_at", "space", "category_names", "space_address"]
+        read_only_fields = [
+            "id", "created_at", "space", "category_names",
+            "space_address", "posting_image_url", "place_region"  # ✅ 그대로 유지
+        ]
 
+    # ✅ 카테고리 이름 반환
     def get_category_names(self, obj):
         return [c.name for c in obj.categories.all()]
 
-    def validate_posting_image_url(self, url):
-        if url and not (str(url).startswith("http://") or str(url).startswith("https://")):
-            raise serializers.ValidationError("posting_image_url은 http:// 또는 https:// 이어야 합니다.")
-        return url
+    # ✅ 업로드된 이미지 주소 반환
+    def get_posting_image_url(self, obj):
+        if obj.posting_image:
+            return f"{settings.MEDIA_URL}{obj.posting_image}"
+        return None
 
     def validate(self, attrs):
         # 가격 규칙
@@ -45,3 +100,52 @@ class PostingSerializer(serializers.ModelSerializer):
         if price_type in (Posting.PRICE_FREE, Posting.PRICE_NEGOTIABLE):
             attrs["price_amount"] = None
         return attrs
+
+    # def to_internal_value(self, data):
+    #     data = data.copy()
+    #     if "categories" in data:
+    #         raw = data["categories"]
+    #         if isinstance(raw, str):
+    #             import json
+    #             try:
+    #                 # JSON 문자열 → 배열
+    #                 data["categories"] = json.loads(raw)
+    #             except Exception:
+    #                 # 쉼표로 구분된 문자열 처리
+    #                 data["categories"] = [x.strip() for x in raw.split(",") if x.strip()]
+    #     return super().to_internal_value(data)
+
+    # ✅ create 시 카테고리 이름 매핑
+    def create(self, validated_data):
+        categories_data = validated_data.pop("categories", [])
+        # 배열이 아닐 경우 보정
+        categories_data = _norm_to_list(categories_data)
+        posting = super().create(validated_data)
+
+        categories = []
+        for name in categories_data:
+            try:
+                cat = Category.objects.get(name=name)
+                categories.append(cat)
+            except Category.DoesNotExist:
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
+        if categories:
+            posting.categories.set(categories)
+        return posting
+
+    # ✅ update 시 카테고리 이름 매핑 (PATCH 허용)
+    def update(self, instance, validated_data):
+        categories_data = validated_data.pop("categories", None)
+        posting = super().update(instance, validated_data)
+
+        if categories_data is not None:
+            categories_data = _norm_to_list(categories_data)
+            categories = []
+            for name in categories_data:
+                try:
+                    cat = Category.objects.get(name=name)
+                    categories.append(cat)
+                except Category.DoesNotExist:
+                    raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
+            posting.categories.set(categories)
+        return posting

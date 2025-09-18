@@ -26,7 +26,7 @@ class Space(models.Model):
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
     # 단수형 필드명 유지 (입력용, 여러 장 순차 저장)
-    place_image = models.ImageField(upload_to="spaces/place/", blank=True, null=True, max_length=1000)
+    place_image = models.JSONField(default=list, blank=True)
     # 여러 이미지의 URL을 배열로 저장 (출력용)
     place_image_url = models.JSONField(default=list, blank=True)
     equipments = models.ManyToManyField(
@@ -63,34 +63,34 @@ class Space(models.Model):
     def __str__(self):
         return self.place_name
 
-    def add_place_images(self, image_files, request=None):
-        """
-        여러 장 이미지를 순차적으로 place_image에 저장하고,
-        각 이미지의 절대 URL을 place_image_url 배열에 append.
-        중복 URL은 자동 제거.
-        """
-        url_list = self.place_image_url or []
-        for img in image_files:
-            self.place_image.save(img.name, img, save=True)
-            # 절대 URL 생성
-            url = self.place_image.url
-            if not url.startswith("http"):
-                if hasattr(settings, "SITE_DOMAIN"):
-                    url = settings.SITE_DOMAIN.rstrip("/") + url
-                else:
-                    url = settings.MEDIA_URL + self.place_image.name
-            if url not in url_list:
-                url_list.append(url)
-        # 중복 제거
-        url_list = list(dict.fromkeys(url_list))
-        self.place_image_url = url_list
-        self.save(update_fields=["place_image_url"])
+    # def add_place_images(self, image_files, request=None):
+    #     """
+    #     여러 장 이미지를 순차적으로 place_image에 저장하고,
+    #     각 이미지의 절대 URL을 place_image_url 배열에 append.
+    #     중복 URL은 자동 제거.
+    #     """
+    #     url_list = self.place_image_url or []
+    #     for img in image_files:
+    #         self.place_image.save(img.name, img, save=True)
+    #         # 절대 URL 생성
+    #         url = self.place_image.url
+    #         if not url.startswith("http"):
+    #             if hasattr(settings, "SITE_DOMAIN"):
+    #                 url = settings.SITE_DOMAIN.rstrip("/") + url
+    #             else:
+    #                 url = settings.MEDIA_URL + self.place_image.name
+    #         if url not in url_list:
+    #             url_list.append(url)
+    #     # 중복 제거
+    #     url_list = list(dict.fromkeys(url_list))
+    #     self.place_image_url = url_list
+    #     self.save(update_fields=["place_image_url"])
 
     def clear_place_images(self):
         """
         모든 이미지 URL을 비우고, 실제 파일도 삭제(옵션).
         """
-        self.place_image.delete(save=False)
+       # self.place_image.delete(save=False)
         self.place_image_url = []
         self.save(update_fields=["place_image_url"])
 

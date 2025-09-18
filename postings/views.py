@@ -12,6 +12,9 @@ from .serializers import PostingSerializer
 from suggestions.models import Suggestion
 from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
+from spaces.models import Space
+import json
+import ast
 
 def bad_request(detail: str, field: str):
     return Response(
@@ -24,6 +27,29 @@ def forbidden(detail: str, field: str = "posting_pk"):
         {"detail": detail, "code": "permission_denied", "field": field},
         status=403
     )
+
+def _norm_to_list_for_filter(value):
+    """문자열/리스트/None → list[str]로 변환 (필터링용)"""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        # JSON 배열 문자열 처리
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, (list, tuple)):
+                return [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        # 쉼표로 구분된 문자열 처리
+        if "," in s:
+            return [x.strip() for x in s.split(",") if x.strip()]
+        return [s]
+    return []
 
 class PostingViewSet(viewsets.ModelViewSet):
     queryset = Posting.objects.all().order_by("-created_at")
@@ -48,13 +74,16 @@ class PostingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
         operation_description="""
-새로운 공연 공고를 등록합니다. (공간 소유자 또는 관리자만 가능)
+새로운 공연 공고를 등록합니다. (공간 소유자만 가능)
+
+**중요**
+- 프론트는 space_id를 절대 body에 넣지 마세요. 서버에서 토큰 기반으로 자동 매핑합니다.
+- 공간 소유자(role=space)만 생성할 수 있습니다.
 
 **필수 필드:**
-- space_id: 공간 PK (본인 소유 공간만 가능)
 - title: 공고 제목
 - description: 공고 설명
-- categories: 카테고리 PK 배열
+- categories: 카테고리 배열
 - price_type: "paid" | "free" | "negotiable"
 - date: 공연 날짜
 
@@ -67,16 +96,23 @@ class PostingViewSet(viewsets.ModelViewSet):
         tags=["Posting"]
     )
     def create(self, request, *args, **kwargs):
-        ser = self.get_serializer(data=request.data)
-        if not ser.is_valid():
-            return bad_request(str(ser.errors), "create")
+        user = request.user
+        if not hasattr(user, "role") or user.role != "space":
+            return forbidden("공간 소유자만 공고를 생성할 수 있습니다.", "role")
 
-        space = ser.validated_data["space"]
-        guard = self._guard_space_owner(request, space)
-        if guard:
-            return guard
+        try:
+            space = Space.objects.get(user=user)
+        except Space.DoesNotExist:
+            return bad_request("해당 유저의 공간 프로필이 없습니다.", "space")
 
-        posting = ser.save()
+        data = request.data.copy()
+        data.pop("space", None)
+        data.pop("space_id", None)
+
+        ser = self.get_serializer(data=data)
+        ser.is_valid(raise_exception=True)  # 오류 발생 시 저장되지 않음
+
+        posting = ser.save(space=space)
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
     # 공연 공고 수정 (PUT)
@@ -93,17 +129,12 @@ class PostingViewSet(viewsets.ModelViewSet):
         tags=["Posting"]
     )
     def update(self, request, *args, **kwargs):
-        posting = self.get_object()
-        guard = self._guard_space_owner(request, posting)
-        if guard:
-            return guard
-
-        partial = kwargs.pop("partial", False)
-        ser = self.get_serializer(posting, data=request.data, partial=partial)
-        if ser.is_valid():
-            posting = ser.save()
-            return Response(self.get_serializer(posting).data, status=200)
-        return bad_request(str(ser.errors), "update")
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)  # 반드시 Response로 감싸서 반환
 
     # 공연 공고 삭제 (DELETE)
     @swagger_auto_schema(
@@ -129,25 +160,20 @@ class PostingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
         operation_description="""
-등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to)로 조회합니다.
+등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to, place_region)로 조회합니다.
 
 - category: 카테고리 PK
 - price_type: "paid" | "free" | "negotiable"
 - date_from: 공연 시작일(YYYY-MM-DD)
 - date_to: 공연 종료일(YYYY-MM-DD)
-
-**응답:**  
-- space: 공간명  
-- space_address: 공간 주소  
-- categories: 카테고리 PK 배열  
-- category_names: 카테고리명 배열  
-- 기타 공고 정보
+- place_region: 공간 지역명 (Space.place_region, 완전일치)
 """,
         manual_parameters=[
             openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 PK', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
+            openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
         ],
         responses={200: PostingSerializer(many=True)},
         tags=["Posting"]
@@ -155,18 +181,41 @@ class PostingViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         qs = self.queryset
         category = request.query_params.get("category")
+        categories = request.query_params.get("categories")
         price_type = request.query_params.get("price_type")
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
+        place_region = request.query_params.get("place_region")
+        region = request.query_params.get("region")
 
-        if category:
-            qs = qs.filter(categories__id=category)
+        # 기존 단일 category(PK) 필터
+        # if category:
+        #     qs = qs.filter(categories__id=category)
+
+        # categories(이름 배열) 필터
+        if categories:
+            categories_list = _norm_to_list_for_filter(categories)
+            if categories_list:
+                qs = qs.filter(categories__name__in=categories_list)
+
         if price_type:
             qs = qs.filter(price_type=price_type)
         if date_from:
             qs = qs.filter(date__gte=date_from)
         if date_to:
             qs = qs.filter(date__lte=date_to)
+
+        # place_region (JSONField/CharField) 필터
+        if place_region:
+            place_region_list = _norm_to_list_for_filter(place_region)
+            if place_region_list:
+                # JSONField라면 contains, CharField라면 in/equals
+                qs = qs.filter(space__place_region__contains=place_region_list)
+        # region (공연공고에 직접 region 필드가 있다면)
+        if region:
+            region_list = _norm_to_list_for_filter(region)
+            if region_list:
+                qs = qs.filter(region__contains=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
@@ -268,6 +317,22 @@ POST /api/v1/postings/1/suggestion/
 
         return Response(SuggestionSerializer(suggestion).data, status=201)
     
-    @swagger_auto_schema(auto_schema=None) 
+    # 공연 공고 부분 수정 (PATCH)
+    @swagger_auto_schema(
+        operation_summary="공연 공고 부분 수정",
+        operation_description="PATCH: 일부 필드만 수정합니다.",
+        request_body=PostingSerializer,
+        responses={200: PostingSerializer, 400: "유효성 오류"},
+        tags=["Posting"]
+    )
     def partial_update(self, request, *args, **kwargs):
-        pass
+        posting = self.get_object()
+        guard = self._guard_space_owner(request, posting)
+        if guard:
+            return guard
+
+        serializer = self.get_serializer(posting, data=request.data, partial=True)
+        if serializer.is_valid():
+            posting = serializer.save()
+            return Response(self.get_serializer(posting).data, status=200)
+        return bad_request(str(serializer.errors), "partial_update")

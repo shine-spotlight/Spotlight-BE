@@ -16,7 +16,7 @@ from spaces.models import SpaceCategory
 import json
 import ast
 
-# 에러 포맷 통일
+# 에러 포맷 통일배포
 def bad_request(detail: str, field: str):
     return Response({"detail": detail, "code": "invalid_param", "field": field}, status=400)
 

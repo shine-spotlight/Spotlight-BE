@@ -31,6 +31,9 @@ class ArtistSerializer(serializers.ModelSerializer):
     equipments_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
     artist_onboarding = serializers.SerializerMethodField(read_only=True)
+    region = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )
 
     class Meta:
         model = Artist
@@ -50,7 +53,15 @@ class ArtistSerializer(serializers.ModelSerializer):
         return _norm_to_list(value)
 
     def validate_region(self, value):
-        return _norm_to_list(value)
+        # region이 문자열이면 리스트로 감싸고, 리스트면 그대로 반환
+        if isinstance(value, str):
+            value = value.strip()
+            if value:
+                return [value]
+            return []
+        if isinstance(value, (list, tuple)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        return []
 
     def validate_profile_image_url(self, value):
         if value and not (str(value).startswith("http://") or str(value).startswith("https://")):
@@ -151,22 +162,7 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
 
-        # region (활동 지역) - norm_name 적용
-        region = self.initial_data.get("region")
-        if region is not None:
-            if isinstance(region, str):
-                try:
-                    region = json.loads(region)
-                except Exception:
-                    try:
-                        region = ast.literal_eval(region)
-                    except Exception:
-                        region = [region]
-            if not isinstance(region, list):
-                region = [region]
-            region = [_norm_name(r) for r in region if isinstance(r, str)]
-            attrs["region"] = region
-
+        # region 처리 부분은 여기서 제거 (validate_region에서만 처리)
         # portfolio_links는 norm_name 적용하지 않음(링크이므로)
 
         # 기존 값 유지 로직 (필요시)

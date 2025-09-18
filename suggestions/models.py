@@ -27,6 +27,7 @@ class Suggestion(models.Model):
     # 상태: None(대기) / True(수락) / False(거절)
     is_accepted = models.BooleanField(blank=True, null=True)
     is_read = models.BooleanField(default=False)  # 읽음 여부 (기본 False)
+    
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
