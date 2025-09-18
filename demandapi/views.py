@@ -3,7 +3,7 @@ from drf_yasg import openapi
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .duckdb_adapter import get_forecast, get_duck_conn
+from .duckdb_adapter import get_duck_conn
 
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
@@ -11,7 +11,54 @@ def bad_request(detail: str, field: str = ""):
         payload["field"] = field
     return Response(payload, status=400)
 
+# ------------------ 지역/장르 정규화 ------------------
+def _normalize_region_token(tok: str) -> str:
+    t = tok.strip()
+    if "충청북" in t or "충북" in t: return "충청북도"
+    if "충청남" in t or "충남" in t: return "충청남도"
+    if "전라북" in t or "전북" in t: return "전북특별자치도"
+    if "전라남" in t or "전남" in t: return "전라남도"
+    if "경상북" in t or "경북" in t: return "경상북도"
+    if "경상남" in t or "경남" in t: return "경상남도"
+    if "서울" in t: return "서울특별시"
+    if "부산" in t: return "부산광역시"
+    if "대구" in t: return "대구광역시"
+    if "인천" in t: return "인천광역시"
+    if "광주" in t: return "광주광역시"
+    if "대전" in t: return "대전광역시"
+    if "울산" in t: return "울산광역시"
+    if "세종" in t: return "세종특별자치시"
+    if "경기" in t: return "경기도"
+    if "강원" in t: return "강원특별자치도"
+    if "제주" in t: return "제주특별자치도"
+    return t
+
+GENRE_CHOICES = [
+    "(ALL)", "대중무용", "대중음악", "무용(서양/한국무용)", "뮤지컬",
+    "복합", "서양음악(클래식)", "서커스/마술", "연극", "한국음악(국악)"
+]
+
+AGE_GROUP_CHOICES = """
+- -1 : 전체
+- 10 : 10대
+- 20 : 20대
+- 30 : 30대
+- 40 : 40대
+- 50 : 50대
+- 60 : 60대
+- 70 : 70대
+- 80 : 80대
+"""
+
+GENDER_CHOICES = """
+- -1 : 전체
+-  1 : 남성
+-  2 : 여성
+-  0 : 알 수 없음
+"""
+
 class DemandViewSet(viewsets.ViewSet):
+    # ------------------ 내부 유틸 ------------------
     def _normalize(self, value: str):
         if not value:
             return None
@@ -58,6 +105,31 @@ class DemandViewSet(viewsets.ViewSet):
     # ------------------ 1. Forecast ------------------
     @swagger_auto_schema(
         operation_summary="수요 예측 조회",
+        operation_description=f"""
+지역, 장르, 연령대, 성별을 기준으로 향후 수요 예측치를 반환합니다.
+
+- region: 행정구역 (예: 서울, 부산, 경기, 전북 → 자동 정규화됨)
+- genre: 장르명 (예: 뮤지컬, 연극, 대중음악 등)
+- age_group: 연령대 코드  
+{AGE_GROUP_CHOICES}
+- gender: 성별 코드  
+{GENDER_CHOICES}
+- as_of: 기준월 (YYYY-MM-01)
+
+⚠️ 조회 결과가 없을 경우, `(ALL, genre)` → `(ALL, ALL)` 순으로 fallback합니다.
+        """,
+        manual_parameters=[
+            openapi.Parameter("region", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="지역명 (서울/부산/경기/전북 등)", required=True),
+            openapi.Parameter("genre", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"장르명 {GENRE_CHOICES}", required=True),
+            openapi.Parameter("age_group", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"연령대 코드\n{AGE_GROUP_CHOICES}", required=False),
+            openapi.Parameter("gender", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"성별 코드\n{GENDER_CHOICES}", required=False),
+            openapi.Parameter("as_of", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="스냅샷 기준월 (YYYY-MM-01)", required=False),
+        ],
         tags=["Demand"]
     )
     @action(detail=False, methods=["get"])
@@ -150,6 +222,7 @@ class DemandViewSet(viewsets.ViewSet):
     # ------------------ 2. Shortage ------------------
     @swagger_auto_schema(
         operation_summary="공급 부족 지수 조회",
+        operation_description="공급 부족 지수(=예측 구간폭 평균)를 반환합니다.",
         tags=["Demand"]
     )
     @action(detail=False, methods=["get"])
@@ -186,6 +259,15 @@ class DemandViewSet(viewsets.ViewSet):
     # ------------------ 3. Recommendation ------------------
     @swagger_auto_schema(
         operation_summary="추천 지역/장르 조회",
+        operation_description="특정 장르 → 인기 지역 TOP-N, 특정 지역 → 인기 장르 TOP-N 반환.",
+        manual_parameters=[
+            openapi.Parameter("region", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="지역 (서울특별시 등). (ALL) 금지", required=False),
+            openapi.Parameter("genre", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"장르명 {GENRE_CHOICES}. (ALL) 금지", required=False),
+            openapi.Parameter("top_n", openapi.IN_QUERY, type=openapi.TYPE_INTEGER,
+                              description="상위 N개 (기본값 3)", required=False),
+        ],
         tags=["Demand"]
     )
     @action(detail=False, methods=["get"])
