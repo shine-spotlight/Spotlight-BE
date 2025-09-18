@@ -192,12 +192,13 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             return bad_request(str(ser.errors))
         instance: Suggestion = ser.save()
 
-        # 포인트 차감 기록 (PointTransaction만)
-        PointTransaction.objects.create(
-            user=user,
-            amount=1000,
-            transaction_type="deduct"
-        )
+        # 포인트 차감: 아티스트가 보낼 때만 차감
+        if instance.sender_type == Suggestion.SENDER_ARTIST:
+            PointTransaction.objects.create(
+                user=user,
+                amount=1000,
+                transaction_type="deduct"
+            )
 
         # 알림 (수신자에게)
         if instance.sender_type == Suggestion.SENDER_ARTIST:

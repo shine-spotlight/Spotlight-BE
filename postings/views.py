@@ -12,6 +12,7 @@ from .serializers import PostingSerializer
 from suggestions.models import Suggestion
 from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
+from spaces.models import Space
 
 def bad_request(detail: str, field: str):
     return Response(
@@ -67,16 +68,28 @@ class PostingViewSet(viewsets.ModelViewSet):
         tags=["Posting"]
     )
     def create(self, request, *args, **kwargs):
-        ser = self.get_serializer(data=request.data)
+        user = request.user
+        # 1. 공간 소유자만 생성 가능
+        if not hasattr(user, "role") or user.role != "space":
+            return forbidden("공간 소유자만 공고를 생성할 수 있습니다.", "role")
+
+        # 2. user로부터 space 자동 매핑
+        try:
+            space = Space.objects.get(user=user)
+        except Space.DoesNotExist:
+            return bad_request("해당 유저의 공간 프로필이 없습니다.", "space")
+
+        # 3. 프론트에서 space_id를 받지 않으므로, data에서 space 관련 필드 제거
+        data = request.data.copy()
+        data.pop("space", None)
+        data.pop("space_id", None)
+
+        ser = self.get_serializer(data=data)
         if not ser.is_valid():
             return bad_request(str(ser.errors), "create")
 
-        space = ser.validated_data["space"]
-        guard = self._guard_space_owner(request, space)
-        if guard:
-            return guard
-
-        posting = ser.save()
+        # 4. space를 강제 지정하여 저장
+        posting = ser.save(space=space)
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
     # 공연 공고 수정 (PUT)
