@@ -263,6 +263,22 @@ POST /api/v1/postings/1/suggestion/
 
         return Response(SuggestionSerializer(suggestion).data, status=201)
     
-    @swagger_auto_schema(auto_schema=None) 
+    # 공연 공고 부분 수정 (PATCH)
+    @swagger_auto_schema(
+        operation_summary="공연 공고 부분 수정",
+        operation_description="PATCH: 일부 필드만 수정합니다.",
+        request_body=PostingSerializer,
+        responses={200: PostingSerializer, 400: "유효성 오류"},
+        tags=["Posting"]
+    )
     def partial_update(self, request, *args, **kwargs):
-        pass
+        posting = self.get_object()
+        guard = self._guard_space_owner(request, posting)
+        if guard:
+            return guard
+
+        serializer = self.get_serializer(posting, data=request.data, partial=True)
+        if serializer.is_valid():
+            posting = serializer.save()
+            return Response(self.get_serializer(posting).data, status=200)
+        return bad_request(str(serializer.errors), "partial_update")
