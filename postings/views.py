@@ -58,7 +58,7 @@ class PostingViewSet(viewsets.ModelViewSet):
 **필수 필드:**
 - title: 공고 제목
 - description: 공고 설명
-- categories: 카테고리 PK 배열
+- categories: 카테고리 배열
 - price_type: "paid" | "free" | "negotiable"
 - date: 공연 날짜
 
@@ -72,26 +72,21 @@ class PostingViewSet(viewsets.ModelViewSet):
     )
     def create(self, request, *args, **kwargs):
         user = request.user
-        # 1. 공간 소유자만 생성 가능
         if not hasattr(user, "role") or user.role != "space":
             return forbidden("공간 소유자만 공고를 생성할 수 있습니다.", "role")
 
-        # 2. user로부터 space 자동 매핑
         try:
             space = Space.objects.get(user=user)
         except Space.DoesNotExist:
             return bad_request("해당 유저의 공간 프로필이 없습니다.", "space")
 
-        # 3. 프론트에서 space_id를 받지 않으므로, data에서 space 관련 필드 제거
         data = request.data.copy()
         data.pop("space", None)
         data.pop("space_id", None)
 
         ser = self.get_serializer(data=data)
-        if not ser.is_valid():
-            return bad_request(str(ser.errors), "create")
+        ser.is_valid(raise_exception=True)  # 오류 발생 시 저장되지 않음
 
-        # 4. space를 강제 지정하여 저장
         posting = ser.save(space=space)
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
@@ -140,25 +135,20 @@ class PostingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
         operation_description="""
-등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to)로 조회합니다.
+등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to, place_region)로 조회합니다.
 
 - category: 카테고리 PK
 - price_type: "paid" | "free" | "negotiable"
 - date_from: 공연 시작일(YYYY-MM-DD)
 - date_to: 공연 종료일(YYYY-MM-DD)
-
-**응답:**  
-- space: 공간명  
-- space_address: 공간 주소  
-- categories: 카테고리 PK 배열  
-- category_names: 카테고리명 배열  
-- 기타 공고 정보
+- place_region: 공간 지역명 (Space.place_region, 완전일치)
 """,
         manual_parameters=[
             openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 PK', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
+            openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
         ],
         responses={200: PostingSerializer(many=True)},
         tags=["Posting"]
@@ -169,6 +159,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         price_type = request.query_params.get("price_type")
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
+        place_region = request.query_params.get("place_region")
 
         if category:
             qs = qs.filter(categories__id=category)
@@ -178,6 +169,8 @@ class PostingViewSet(viewsets.ModelViewSet):
             qs = qs.filter(date__gte=date_from)
         if date_to:
             qs = qs.filter(date__lte=date_to)
+        if place_region:
+            qs = qs.filter(space__place_region=place_region)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)

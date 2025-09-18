@@ -127,21 +127,15 @@ class SpaceSerializer(serializers.ModelSerializer):
     # 밸리데이션 (배열 강제)
     # ----------------------------
     def validate_list_field(self, value, field_name):
-        """배열 필드를 무조건 list로 변환"""
+        """배열 필드를 무조건 list로 변환 (단순화)"""
         if value is None:
             return []
         if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
-            except Exception:
-                try:
-                    parsed = ast.literal_eval(value)
-                except Exception:
-                    parsed = [value]
-            value = parsed
-        if not isinstance(value, list):
-            raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})
-        return value
+            value = value.strip()
+            return [value] if value else []
+        if isinstance(value, (list, tuple)):
+            return [str(x).strip() for x in value if str(x).strip()]
+        raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})
 
     def validate(self, attrs):
         # categories
