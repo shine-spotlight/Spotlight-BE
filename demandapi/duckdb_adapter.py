@@ -1,6 +1,7 @@
 # demandapi/duckdb_adapter.py
 # -*- coding: utf-8 -*-
 import os
+import duckdb
 from contextlib import contextmanager
 
 # === DuckDB 경로 결정 ===
@@ -13,16 +14,15 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ENV_PATH = os.environ.get("DUCKDB_ANALYTICS_DB")
 CANDIDATES = [
     ENV_PATH,
-    os.path.join(DATA_DIR, "testout5.duckdb"),
+    os.path.join(DATA_DIR, "testout5.1.duckdb"),
     os.path.join(DATA_DIR, "testout4.duckdb"),
 ]
 DUCK_PATH = next((p for p in CANDIDATES if p and os.path.exists(p)), os.path.join(DATA_DIR, "testout4.duckdb"))
-DB_PATH = "/opt/render/project/src/data/testout4.duckdb"
+
 @contextmanager
 def get_duck_conn():
     """DuckDB 연결을 context manager로 열고 닫음 (READ ONLY)"""
-    import duckdb
-    con = duckdb.connect("/opt/render/project/src/data/testout5.duckdb")
+    con = duckdb.connect(DUCK_PATH, read_only=True)
     try:
         con.execute("PRAGMA threads=6; PRAGMA memory_limit='2GB';")
         yield con
@@ -64,7 +64,7 @@ def get_forecast(region=None, genre=None, age_group=None, gender=None, as_of=Non
                 return []
 
         # as_of
-        where.append("as_of_month = ?")
+        where.append("as_of_month = DATE ?")
         params.append(as_of)
 
         # region / genre: LOWER 비교, None은 IS NULL

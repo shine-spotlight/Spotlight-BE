@@ -50,6 +50,7 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
     space_address = serializers.CharField(source="space.address", read_only=True)
+    place_region = serializers.CharField(source="space.place_region", read_only=True)  # ✅ 추가
 
     # ❌ 기존
     # categories = serializers.ListField(
@@ -72,9 +73,13 @@ class PostingSerializer(serializers.ModelSerializer):
             "title", "description",
             "posting_image", "posting_image_url",
             "categories", "category_names",
-            "price_type", "price_amount", "date", "created_at", "place_region"
+            "price_type", "price_amount", "date", "created_at",
+            "place_region"  # ✅ 그대로 유지
         ]
-        read_only_fields = ["id", "created_at", "space", "category_names", "space_address", "posting_image_url","place_region"]
+        read_only_fields = [
+            "id", "created_at", "space", "category_names",
+            "space_address", "posting_image_url", "place_region"  # ✅ 그대로 유지
+        ]
 
     # ✅ 카테고리 이름 반환
     def get_category_names(self, obj):

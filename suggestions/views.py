@@ -159,6 +159,13 @@ class SuggestionViewSet(viewsets.ModelViewSet):
                 return bad_request("존재하지 않는 space 입니다.", "space")
             if my_artist.user_id == receiver_obj.user_id:
                 return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+            # ✅ 아티스트만 포인트 잔액 검사
+            balance = sum([
+                tx.amount if tx.transaction_type == "charge" else -tx.amount
+                for tx in PointTransaction.objects.filter(user=user)
+            ])
+            if balance < 1000:
+                return bad_request("포인트가 부족합니다.", "point")
         elif role == "space":
             my_space = self._get_my_space(user)
             if not my_space:
@@ -178,14 +185,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         exists = Suggestion.objects.filter(artist_id=data["artist"], space_id=data["space"]).exists()
         if exists:
             return bad_request("이미 동일한 artist/space 조합의 제안이 존재합니다.", "artist/space")
-
-        # 포인트 잔액 계산 및 차감 (PointTransaction 기반만 사용)
-        balance = sum([
-            tx.amount if tx.transaction_type == "charge" else -tx.amount
-            for tx in PointTransaction.objects.filter(user=user)
-        ])
-        if balance < 1000:
-            return bad_request("포인트가 부족합니다.", "point")
 
         ser = self.get_serializer(data=data, context={"request": request})
         if not ser.is_valid():

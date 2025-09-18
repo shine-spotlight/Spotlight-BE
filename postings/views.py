@@ -13,6 +13,8 @@ from suggestions.models import Suggestion
 from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
+import json
+import ast
 
 def bad_request(detail: str, field: str):
     return Response(
@@ -25,6 +27,29 @@ def forbidden(detail: str, field: str = "posting_pk"):
         {"detail": detail, "code": "permission_denied", "field": field},
         status=403
     )
+
+def _norm_to_list_for_filter(value):
+    """문자열/리스트/None → list[str]로 변환 (필터링용)"""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        # JSON 배열 문자열 처리
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, (list, tuple)):
+                return [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        # 쉼표로 구분된 문자열 처리
+        if "," in s:
+            return [x.strip() for x in s.split(",") if x.strip()]
+        return [s]
+    return []
 
 class PostingViewSet(viewsets.ModelViewSet):
     queryset = Posting.objects.all().order_by("-created_at")
@@ -156,21 +181,41 @@ class PostingViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         qs = self.queryset
         category = request.query_params.get("category")
+        categories = request.query_params.get("categories")
         price_type = request.query_params.get("price_type")
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
         place_region = request.query_params.get("place_region")
+        region = request.query_params.get("region")
 
+        # 기존 단일 category(PK) 필터
         if category:
             qs = qs.filter(categories__id=category)
+
+        # categories(이름 배열) 필터
+        if categories:
+            categories_list = _norm_to_list_for_filter(categories)
+            if categories_list:
+                qs = qs.filter(categories__name__in=categories_list)
+
         if price_type:
             qs = qs.filter(price_type=price_type)
         if date_from:
             qs = qs.filter(date__gte=date_from)
         if date_to:
             qs = qs.filter(date__lte=date_to)
+
+        # place_region (JSONField/CharField) 필터
         if place_region:
-            qs = qs.filter(space__place_region=place_region)
+            place_region_list = _norm_to_list_for_filter(place_region)
+            if place_region_list:
+                # JSONField라면 contains, CharField라면 in/equals
+                qs = qs.filter(space__place_region__contains=place_region_list)
+        # region (공연공고에 직접 region 필드가 있다면)
+        if region:
+            region_list = _norm_to_list_for_filter(region)
+            if region_list:
+                qs = qs.filter(region__contains=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
