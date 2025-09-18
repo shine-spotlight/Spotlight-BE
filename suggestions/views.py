@@ -106,6 +106,10 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     - 상대가 아티스트면 `artist.profile_image`의 URL이 반환됩니다.
     - 상대가 공간이면 `space.place_image`의 첫 번째 이미지 URL이 반환됩니다.
 - `artist_obj`, `space_obj` 필드로도 상대방의 id/이름(공간명) 정보를 확인할 수 있습니다.
+
+**중요**
+- 프론트는 내 role(artist/space)에 따라 상대방 id만 body에 포함하면 됩니다.
+- sender_type, 내 프로필 id 등은 절대 body에 넣지 마세요. 서버에서 자동 처리합니다.
 """,
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
