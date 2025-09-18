@@ -93,17 +93,12 @@ class PostingViewSet(viewsets.ModelViewSet):
         tags=["Posting"]
     )
     def update(self, request, *args, **kwargs):
-        posting = self.get_object()
-        guard = self._guard_space_owner(request, posting)
-        if guard:
-            return guard
-
-        partial = kwargs.pop("partial", False)
-        ser = self.get_serializer(posting, data=request.data, partial=partial)
-        if ser.is_valid():
-            posting = ser.save()
-            return Response(self.get_serializer(posting).data, status=200)
-        return bad_request(str(ser.errors), "update")
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)  # 반드시 Response로 감싸서 반환
 
     # 공연 공고 삭제 (DELETE)
     @swagger_auto_schema(
