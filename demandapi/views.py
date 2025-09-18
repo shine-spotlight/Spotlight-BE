@@ -97,9 +97,9 @@ class DemandViewSet(viewsets.ViewSet):
                     "yhat_upper": r[3],
                 } for r in (rows or [])]
 
-                # Fallback 1: (ALL, genre) → 점유율로 보정
+                # Fallback 1: (ALL, genre)
                 if not items:
-                    agg_sql = """
+                    fallback_sql = """
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
                         WHERE as_of_month = CAST(? AS DATE)
@@ -107,56 +107,30 @@ class DemandViewSet(viewsets.ViewSet):
                           AND LOWER(genre)  = ?
                         ORDER BY month
                     """
-                    agg_rows = con.execute(agg_sql, [as_of, genre]).fetchall()
-                    if agg_rows:
-                        # 최근 3개월 수요 기반 점유율 계산
-                        share_sql = """
-                            WITH mx AS (
-                                SELECT date_trunc('month', MAX(month)) AS end_month
-                                FROM analytics.demand_modeling_grid
-                            )
-                            SELECT region, SUM(demand) AS total_demand
-                            FROM analytics.demand_modeling_grid, mx
-                            WHERE month >= (mx.end_month - INTERVAL 2 MONTH)
-                              AND month <= mx.end_month
-                              AND LOWER(genre) = ?
-                              AND age_group = -1 AND gender = -1
-                            GROUP BY region
-                            HAVING SUM(demand) > 0
-                        """
-                        shares = con.execute(share_sql, [genre]).fetchall()
-                        total = sum(r[1] for r in shares)
-                        weight = 0
-                        for reg, demand in shares:
-                            if reg.lower() == region:
-                                weight = demand / total
-                                break
-                        if weight > 0:
-                            items = [{
-                                "month": str(r[0])[:10],
-                                "forecast": r[1] * weight if r[1] else None,
-                                "yhat_lower": r[2] * weight if r[2] else None,
-                                "yhat_upper": r[3] * weight if r[3] else None,
-                            } for r in agg_rows]
-
-                # Fallback 2: (ALL, ALL)
-                if not items:
-                    fallback_sql2 = """
-                        SELECT month, forecast, yhat_lower, yhat_upper
-                        FROM analytics.demand_forecast_asof
-                        WHERE as_of_month = CAST(? AS DATE)
-                          AND LOWER(region) = '(all)'
-                          AND LOWER(genre)  = '(all)'
-                        ORDER BY month
-                    """
-                    rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                    rows = con.execute(fallback_sql, [as_of, genre]).fetchall()
                     items = [{
                         "month": str(r[0])[:10],
                         "forecast": r[1],
                         "yhat_lower": r[2],
                         "yhat_upper": r[3],
                     } for r in (rows or [])]
-
+                    if not items:
+                        # 2차 fallback: (ALL, ALL)
+                        fallback_sql2 = """
+                            SELECT month, forecast, yhat_lower, yhat_upper
+                            FROM analytics.demand_forecast_asof
+                            WHERE as_of_month = CAST(? AS DATE)
+                              AND LOWER(region) = '(all)'
+                              AND LOWER(genre)  = '(all)'
+                            ORDER BY month
+                        """
+                        rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                        items = [{
+                            "month": str(r[0])[:10],
+                            "forecast": r[1],
+                            "yhat_lower": r[2],
+                            "yhat_upper": r[3],
+                        } for r in (rows or [])]
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
