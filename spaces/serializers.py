@@ -1,19 +1,29 @@
 from rest_framework import serializers
-from .models import Space, SpaceCategory
-from equipmentcategories.models import EquipmentCategory
+from .models import Space
 from categories.models import Category
 from likes.models import Like
+from spaces.models import SpaceCategory
+from equipmentcategories.models import EquipmentCategory
+import json
+import ast
 
-def _norm_to_list(value):
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    s = str(value).strip()
-    return [s] if s else []
+
+def _norm_name(name: str) -> str:
+    return " ".join(str(name).strip().split()).lower()
+
+# SpaceImageSerializer는 더 이상 사용하지 않으므로 주석 처리
+# class SpaceImageSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = SpaceImage
+#         fields = ['id', 'image', 'uploaded_at']
 
 class SpaceSerializer(serializers.ModelSerializer):
-    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    # 입력: place_image (단수형, 여러 장 지원)
+    place_image = serializers.ListField(
+        child=serializers.ImageField(), write_only=True, required=False
+    )
+    # 출력: place_image_url (배열)
+    place_image_url = serializers.ListField(read_only=True)
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
@@ -36,14 +46,52 @@ class SpaceSerializer(serializers.ModelSerializer):
             "id", "user", "place_name", "address", "postal_code", "kakao_map_link",
             "categories", "categories_display", "preferred_categories", "preferred_categories_display",
             "custom_category", "description", "capacity_seated", "capacity_standing",
-            "business_registration_number", "atmosphere", "place_image", "place_image_url",
+            "business_registration_number", "atmosphere", "place_image", 
             "equipments", "equipments_display", "place_region", "phone_number", "created_at",
-            "is_liked", "space_onboarding",
+            "is_liked", "space_onboarding", "place_image_url"
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "preferred_categories_display",
-            "phone_number", "categories_display", "place_region", "is_liked"
+            "phone_number", "categories_display", "place_image_url","place_region", "is_liked"
         ]
+
+    def create(self, validated_data):
+        images = validated_data.pop("place_image", [])
+        categories = validated_data.pop("categories", [])
+        preferred_categories = validated_data.pop("preferred_categories", [])
+        space = super().create(validated_data)
+        # SpaceImage 관련 코드 주석 처리
+        # for img in images:
+        #     SpaceImage.objects.create(space=space, image=img)
+        # 대신 모델의 add_place_images 메서드 사용
+        if images:
+            space.add_place_images(images)
+        if categories:
+            space.categories.set(categories)
+        if preferred_categories:
+            space.preferred_categories.set(preferred_categories)
+        # space.update_place_image_url()  # add_place_images에서 처리됨
+        return space
+
+    def update(self, instance, validated_data):
+        images = validated_data.pop("place_image", None)
+        categories = validated_data.pop("categories", None)
+        preferred_categories = validated_data.pop("preferred_categories", None)
+        space = super().update(instance, validated_data)
+        # SpaceImage 관련 코드 주석 처리
+        # if images is not None:
+        #     instance.images.all().delete()
+        #     for img in images:
+        #         SpaceImage.objects.create(space=instance, image=img)
+        #     space.update_place_image_url()
+        if images is not None:
+            instance.clear_place_images()
+            instance.add_place_images(images)
+        if categories is not None:
+            space.categories.set(categories)
+        if preferred_categories is not None:
+            space.preferred_categories.set(preferred_categories)
+        return space
 
     def get_categories_display(self, obj):
         return [c.name for c in obj.categories.all()]
@@ -61,13 +109,11 @@ class SpaceSerializer(serializers.ModelSerializer):
         return False
 
     def get_space_onboarding(self, obj):
-        # 필수 정보가 모두 입력되어 있으면 False, 하나라도 없으면 True
         required_fields = [
             obj.place_name,
             obj.address,
-            #obj.kakao_map_link,
             obj.business_registration_number,
-            obj.categories.all(),  # ManyToManyField는 all()로 체크
+            obj.categories.all(),
         ]
         return any(
             not field or (hasattr(field, "__len__") and not len(field))
@@ -75,32 +121,86 @@ class SpaceSerializer(serializers.ModelSerializer):
         )
 
     def validate_atmosphere(self, value):
-        return _norm_to_list(value)
+        if isinstance(value, list):
+            return value
+        if value is None:
+            return []
+        return [value]
 
     def validate(self, attrs):
-        # categories → SpaceCategory 객체 리스트로 변환
+        # categories → SpaceCategory 객체 리스트로 변환 (norm_name 적용)
         categories_names = self.initial_data.get("categories")
         if categories_names is not None:
+            if isinstance(categories_names, str):
+                try:
+                    categories_names = ast.literal_eval(categories_names)
+                except Exception:
+                    raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
             if not isinstance(categories_names, list):
                 raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
-            categories = SpaceCategory.objects.filter(name__in=categories_names)
+            # norm_name 적용
+            categories_names = [_norm_name(cat) for cat in categories_names if isinstance(cat, str)]
+            categories = list(SpaceCategory.objects.filter(name__in=categories_names))
             if len(categories) != len(categories_names):
-                found_names = set(categories.values_list("name", flat=True))
+                found_names = {c.name for c in categories}
                 not_found = set(categories_names) - found_names
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
-        # preferred_categories → Category 객체 리스트로 변환 (이름 배열 허용)
+        # preferred_categories → Category 객체 리스트로 변환 (norm_name 적용)
         preferred_categories_names = self.initial_data.get("preferred_categories")
         if preferred_categories_names is not None:
+            if isinstance(preferred_categories_names, str):
+                try:
+                    preferred_categories_names = ast.literal_eval(preferred_categories_names)
+                except Exception:
+                    raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
             if not isinstance(preferred_categories_names, list):
                 raise serializers.ValidationError({"preferred_categories": "리스트 형태여야 합니다."})
-            categories = Category.objects.filter(name__in=preferred_categories_names)
+            preferred_categories_names = [_norm_name(cat) for cat in preferred_categories_names if isinstance(cat, str)]
+            categories = list(Category.objects.filter(name__in=preferred_categories_names))
             if len(categories) != len(preferred_categories_names):
-                found_names = set(categories.values_list("name", flat=True))
+                found_names = {c.name for c in categories}
                 not_found = set(preferred_categories_names) - found_names
                 raise serializers.ValidationError({"preferred_categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["preferred_categories"] = categories
+
+        # equipments → EquipmentCategory 객체 리스트로 변환 (norm_name 적용)
+        equipments_names = self.initial_data.get("equipments")
+        if equipments_names is not None:
+            if isinstance(equipments_names, str):
+                try:
+                    equipments_names = json.loads(equipments_names)
+                except Exception:
+                    try:
+                        equipments_names = ast.literal_eval(equipments_names)
+                    except Exception:
+                        raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
+            if not isinstance(equipments_names, list):
+                raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
+            equipments_names = [_norm_name(eq) for eq in equipments_names if isinstance(eq, str)]
+            equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
+            if len(equipments) != len(equipments_names):
+                found_names = {e.name for e in equipments}
+                not_found = set(equipments_names) - found_names
+                raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
+            attrs["equipments"] = equipments
+
+        # atmosphere → 리스트로 변환 (norm_name 적용)
+        atmosphere = self.initial_data.get("atmosphere")
+        if atmosphere is not None:
+            if isinstance(atmosphere, str):
+                try:
+                    atmosphere = json.loads(atmosphere)
+                except Exception:
+                    try:
+                        atmosphere = ast.literal_eval(atmosphere)
+                    except Exception:
+                        raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
+            if not isinstance(atmosphere, list):
+                raise serializers.ValidationError({"atmosphere": "리스트 형태여야 합니다."})
+            atmosphere = [_norm_name(item) for item in atmosphere if isinstance(item, str)]
+            attrs["atmosphere"] = atmosphere
 
         # 기존 값 유지 로직 (필요시)
         if self.instance:
@@ -112,33 +212,3 @@ class SpaceSerializer(serializers.ModelSerializer):
                 if field not in attrs and hasattr(self.instance, field):
                     attrs[field] = getattr(self.instance, field)
         return attrs
-
-    def create(self, validated_data):
-        categories = validated_data.pop("categories", [])
-        equipments = validated_data.pop("equipments", [])
-        preferred_categories = validated_data.pop("preferred_categories", [])
-        space = super().create(validated_data)
-        if categories:
-            space.categories.set(categories)
-        if equipments:
-            space.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
-        if preferred_categories:
-            space.preferred_categories.set(preferred_categories)
-        return space
-
-    def update(self, instance, validated_data):
-        categories = validated_data.pop("categories", None)
-        equipments = validated_data.pop("equipments", None)
-        preferred_categories = validated_data.pop("preferred_categories", None)
-        space = super().update(instance, validated_data)
-        if categories is not None:
-            space.categories.set(categories)
-        if equipments is not None:
-            space.equipments.set(
-                EquipmentCategory.objects.filter(name__in=equipments)
-            )
-        if preferred_categories is not None:
-            space.preferred_categories.set(preferred_categories)
-        return space
