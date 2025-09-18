@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from .duckdb_adapter import get_forecast, get_duck_conn
 import duckdb  # 추가배포
 
+DB_PATH = "/opt/render/project/src/data/testout5.duckdb"
+
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
     if field:
@@ -17,7 +19,10 @@ class DemandViewSet(viewsets.ViewSet):
         if not value:
             return None
         return value.strip().lower()
-    
+
+    def _is_all(self, value: str) -> bool:
+        return str(value).strip().lower() in {"all", "(all)"}
+
     # age_group: -1=전체, 미상=IS NULL, 숫자(10/20/..)=그 값
     def _parse_age_group2(self, value: str | None):
         if value is None or str(value).strip() == "":
@@ -187,10 +192,12 @@ class DemandViewSet(viewsets.ViewSet):
         if not region or not genre:
             return bad_request("region과 genre는 필수입니다.", "region/genre")
         try:
+            # shortage_index_asof 테이블이 없다면, demand_forecast_asof 등 실제 존재하는 테이블로 FROM 절을 교체
+            # 예시: demand_forecast_asof에 shortage_index 컬럼이 있다고 가정
             sql = """
                 SELECT shortage_index
-                FROM analytics.shortage_index_asof
-                WHERE as_of_month = ?  -- DuckDB는 문자열 날짜 비교 가능
+                FROM analytics.demand_forecast_asof
+                WHERE as_of_month = ?
                   AND LOWER(region) = ?
                   AND LOWER(genre)  = ?
                 LIMIT 1

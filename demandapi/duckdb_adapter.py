@@ -1,7 +1,6 @@
 # demandapi/duckdb_adapter.py
 # -*- coding: utf-8 -*-
 import os
-import duckdb
 from contextlib import contextmanager
 
 # === DuckDB 경로 결정 ===
@@ -22,7 +21,8 @@ DUCK_PATH = next((p for p in CANDIDATES if p and os.path.exists(p)), os.path.joi
 @contextmanager
 def get_duck_conn():
     """DuckDB 연결을 context manager로 열고 닫음 (READ ONLY)"""
-    con = duckdb.connect(DUCK_PATH, read_only=True)
+    import duckdb
+    con = duckdb.connect("/opt/render/project/src/data/testout5.duckdb")
     try:
         con.execute("PRAGMA threads=6; PRAGMA memory_limit='2GB';")
         yield con
