@@ -1,338 +1,324 @@
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db import transaction
-from suggestions.serializers import SuggestionSerializer
+from .duckdb_adapter import get_duck_conn
 
-from .models import Posting
-from .serializers import PostingSerializer
-from suggestions.models import Suggestion
-from artists.models import Artist
-from rest_framework.permissions import IsAuthenticated
-from spaces.models import Space
-import json
-import ast
+def bad_request(detail: str, field: str = ""):
+    payload = {"detail": detail, "code": "invalid_param"}
+    if field:
+        payload["field"] = field
+    return Response(payload, status=400)
 
-def bad_request(detail: str, field: str):
-    return Response(
-        {"detail": detail, "code": "invalid_param", "field": field},
-        status=400
-    )
+# ------------------ 지역/장르 정규화 ------------------
+def _normalize_region_token(tok: str) -> str:
+    t = tok.strip()
+    if "충청북" in t or "충북" in t: return "충청북도"
+    if "충청남" in t or "충남" in t: return "충청남도"
+    if "전라북" in t or "전북" in t: return "전북특별자치도"
+    if "전라남" in t or "전남" in t: return "전라남도"
+    if "경상북" in t or "경북" in t: return "경상북도"
+    if "경상남" in t or "경남" in t: return "경상남도"
+    if "서울" in t: return "서울특별시"
+    if "부산" in t: return "부산광역시"
+    if "대구" in t: return "대구광역시"
+    if "인천" in t: return "인천광역시"
+    if "광주" in t: return "광주광역시"
+    if "대전" in t: return "대전광역시"
+    if "울산" in t: return "울산광역시"
+    if "세종" in t: return "세종특별자치시"
+    if "경기" in t: return "경기도"
+    if "강원" in t: return "강원특별자치도"
+    if "제주" in t: return "제주특별자치도"
+    return t
 
-def forbidden(detail: str, field: str = "posting_pk"):
-    return Response(
-        {"detail": detail, "code": "permission_denied", "field": field},
-        status=403
-    )
+GENRE_CHOICES = [
+    "(ALL)", "대중무용", "대중음악", "무용(서양/한국무용)", "뮤지컬",
+    "복합", "서양음악(클래식)", "서커스/마술", "연극", "한국음악(국악)"
+]
 
-def _norm_to_list_for_filter(value):
-    """문자열/리스트/None → list[str]로 변환 (필터링용)"""
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        return [str(x).strip() for x in value if str(x).strip()]
-    if isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return []
-        # JSON 배열 문자열 처리
-        try:
-            parsed = json.loads(s)
-            if isinstance(parsed, (list, tuple)):
-                return [str(x).strip() for x in parsed if str(x).strip()]
-        except Exception:
-            pass
-        # 쉼표로 구분된 문자열 처리
-        if "," in s:
-            return [x.strip() for x in s.split(",") if x.strip()]
-        return [s]
-    return []
-
-class PostingViewSet(viewsets.ModelViewSet):
-    queryset = Posting.objects.all().order_by("-created_at")
-    serializer_class = PostingSerializer
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
-    def _guard_space_owner(self, request, posting_or_space):
-        space = posting_or_space.space if isinstance(posting_or_space, Posting) else posting_or_space
-
-        if request.user.is_superuser:
+class DemandViewSet(viewsets.ViewSet):
+    # ------------------ 내부 유틸 ------------------
+    def _normalize(self, value: str):
+        if not value:
             return None
+        return value.strip().lower()
 
-        if not request.user.is_authenticated:
-            return forbidden("인증 필요")
+    def _is_all(self, value: str) -> bool:
+        return str(value).strip().lower() in {"all", "(all)"}
 
-        if getattr(request.user, "id", None) != getattr(space.user, "id", None):
-            return forbidden("본인 공간의 공고만 생성/수정/삭제할 수 있습니다.")
+    def _parse_age_group2(self, value: str | None):
+        if value is None or str(value).strip() == "":
+            return {"mode": "unspecified", "value": None}
+        v = str(value).strip().lower()
+        if v == "-1":
+            return {"mode": "value", "value": -1}
+        if v in {"미상", "알수없음", "알 수 없음", "unknown", "null"}:
+            return {"mode": "unknown", "value": None}
+        if v.isdigit():
+            return {"mode": "value", "value": int(v)}
+        import re
+        m = re.match(r"^(\d+)", v)
+        if m:
+            return {"mode": "value", "value": int(m.group(1))}
+        return {"mode": "invalid", "value": None}
+    
+    def _parse_gender2(self, value: str | None):
+        if value is None or str(value).strip() == "":
+            return {"mode": "unspecified", "value": None}
+        v = str(value).strip().lower()
+        if v == "-1":
+            return {"mode": "value", "value": -1}
+        if v in {"0", "미상", "알수없음", "알 수 없음", "unknown", "u", "x"}:
+            return {"mode": "value", "value": 0}
+        if v in {"1", "남", "남성", "m", "male"}:
+            return {"mode": "value", "value": 1}
+        if v in {"2", "여", "여성", "f", "female"}:
+            return {"mode": "value", "value": 2}
+        return {"mode": "invalid", "value": None}
 
-        return None
+    def _gender_label(self, g: int | None) -> str | None:
+        if g is None:
+            return None
+        return {1: "남성", 2: "여성", 0: "알 수 없음", -1: "전체"}.get(g, None)
 
-    # 공연 공고 생성 (POST임)
+    # ------------------ 1. Forecast ------------------
     @swagger_auto_schema(
-        operation_summary="공연 공고 생성",
+        operation_summary="수요 예측 조회",
         operation_description="""
-새로운 공연 공고를 등록합니다. (공간 소유자만 가능)
+지역, 장르, 연령대, 성별을 기준으로 향후 수요 예측치를 반환합니다.
 
-**중요**
-- 프론트는 space_id를 절대 body에 넣지 마세요. 서버에서 토큰 기반으로 자동 매핑합니다.
-- 공간 소유자(role=space)만 생성할 수 있습니다.
+- region: 행정구역 (예: 서울, 부산, 경기, 전북 → 자동 정규화됨)
+- genre: 장르명 (예: 뮤지컬, 연극, 대중음악 등)
+- age_group: "-1"(전체), "10"/"20"/... , "미상"
+- gender: "-1"(전체), "1"(남), "2"(여), "0"(미상)
+- as_of: 기준월 (YYYY-MM-01)
 
-**필수 필드:**
-- title: 공고 제목
-- description: 공고 설명
-- categories: 카테고리 배열
-- price_type: "paid" | "free" | "negotiable"
-- date: 공연 날짜
-
-**선택 필드:**
-- posting_image: 공고 이미지 파일
-- price_amount: 가격(유료일 때만)
-""",
-        request_body=PostingSerializer,
-        responses={201: PostingSerializer, 400: "유효성 오류"},
-        tags=["Posting"]
-    )
-    def create(self, request, *args, **kwargs):
-        user = request.user
-        if not hasattr(user, "role") or user.role != "space":
-            return forbidden("공간 소유자만 공고를 생성할 수 있습니다.", "role")
-
-        try:
-            space = Space.objects.get(user=user)
-        except Space.DoesNotExist:
-            return bad_request("해당 유저의 공간 프로필이 없습니다.", "space")
-
-        data = request.data.copy()
-        data.pop("space", None)
-        data.pop("space_id", None)
-
-        ser = self.get_serializer(data=data)
-        ser.is_valid(raise_exception=True)  # 오류 발생 시 저장되지 않음
-
-        posting = ser.save(space=space)
-        return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
-
-    # 공연 공고 수정 (PUT)
-    @swagger_auto_schema(
-        operation_summary="공연 공고 수정",
-        operation_description="""
-기존 공연 공고의 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)
-
-**수정 가능한 필드:**  
-- space_id, title, description, categories, price_type, price_amount, date, posting_image
-""",
-        request_body=PostingSerializer,
-        responses={200: PostingSerializer, 400: "유효성 오류"},
-        tags=["Posting"]
-    )
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)  # 반드시 Response로 감싸서 반환
-
-    # 공연 공고 삭제 (DELETE)
-    @swagger_auto_schema(
-        operation_summary="공연 공고 삭제",
-        operation_description="""
-특정 공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)
-
-**주의:** 삭제된 데이터는 복구할 수 없습니다.
-""",
-        responses={204: "삭제 성공", 403: "권한 없음"},
-        tags=["Posting"]
-    )
-    def destroy(self, request, *args, **kwargs):
-        posting = self.get_object()
-        guard = self._guard_space_owner(request, posting)
-        if guard:
-            return guard
-
-        posting.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    # 공연 공고 전체 조회 (GET)
-    @swagger_auto_schema(
-        operation_summary="공연 공고 전체 조회",
-        operation_description="""
-등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to, place_region)로 조회합니다.
-
-- category: 카테고리 PK
-- price_type: "paid" | "free" | "negotiable"
-- date_from: 공연 시작일(YYYY-MM-DD)
-- date_to: 공연 종료일(YYYY-MM-DD)
-- place_region: 공간 지역명 (Space.place_region, 완전일치)
-""",
+⚠️ 조회 결과가 없을 경우, `(ALL, genre)` → `(ALL, ALL)` 순으로 fallback합니다.
+        """,
         manual_parameters=[
-            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 PK', required=False),
-            openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
-            openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
-            openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
-            openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
+            openapi.Parameter("region", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="지역명 (서울/부산/경기/전북 등)", required=True),
+            openapi.Parameter("genre", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"장르명 {GENRE_CHOICES}", required=True),
+            openapi.Parameter("age_group", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="-1=전체, 숫자(10,20,...), 미상", required=False),
+            openapi.Parameter("gender", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="-1=전체, 1=남, 2=여, 0=미상", required=False),
+            openapi.Parameter("as_of", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="스냅샷 기준월 (YYYY-MM-01)", required=False),
         ],
-        responses={200: PostingSerializer(many=True)},
-        tags=["Posting"]
+        tags=["Demand"]
     )
-    def list(self, request, *args, **kwargs):
-        qs = self.queryset
-        category = request.query_params.get("category")
-        categories = request.query_params.get("categories")
-        price_type = request.query_params.get("price_type")
-        date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
-        place_region = request.query_params.get("place_region")
-        region = request.query_params.get("region")
+    @action(detail=False, methods=["get"])
+    def forecast(self, request):
+        raw_region = request.query_params.get("region")
+        raw_genre  = request.query_params.get("genre")
+        if not raw_region or not raw_genre:
+            return bad_request("region과 genre는 필수입니다.", "region/genre")
 
-        # 기존 단일 category(PK) 필터
-        # if category:
-        #     qs = qs.filter(categories__id=category)
+        region = self._normalize(raw_region)
+        genre  = self._normalize(raw_genre)
 
-        # categories(이름 배열) 필터
-        if categories:
-            categories_list = _norm_to_list_for_filter(categories)
-            if categories_list:
-                qs = qs.filter(categories__name__in=categories_list)
+        ag = self._parse_age_group2(request.query_params.get("age_group"))
+        gd = self._parse_gender2(request.query_params.get("gender"))
+        if ag["mode"] == "invalid":
+            return bad_request("age_group 형식이 올바르지 않습니다. (-1/10/20/.../미상)", "age_group")
+        if gd["mode"] == "invalid":
+            return bad_request("gender 형식이 올바르지 않습니다. (-1/0/1/2/미상)", "gender")
 
-        if price_type:
-            qs = qs.filter(price_type=price_type)
-        if date_from:
-            qs = qs.filter(date__gte=date_from)
-        if date_to:
-            qs = qs.filter(date__lte=date_to)
-
-        # place_region (JSONField/CharField) 필터
-        if place_region:
-            place_region_list = _norm_to_list_for_filter(place_region)
-            if place_region_list:
-                # JSONField라면 contains, CharField라면 in/equals
-                qs = qs.filter(space__place_region__contains=place_region_list)
-        # region (공연공고에 직접 region 필드가 있다면)
-        if region:
-            region_list = _norm_to_list_for_filter(region)
-            if region_list:
-                qs = qs.filter(region__contains=region_list)
-
-        page = self.paginate_queryset(qs)
-        ser = self.get_serializer(page or qs, many=True)
-        if page is not None:
-            return self.get_paginated_response(ser.data)
-        return Response(ser.data, status=200)
-    
-    # 공연 공고 상세 조회 (GET)
-    @swagger_auto_schema(
-        operation_summary="공연 공고 상세 조회",
-        operation_description="""
-특정 공연 공고의 상세 정보를 조회합니다.
-
-**포함 정보:**
-- space: 공간명
-- space_address: 공간 주소
-- categories: 카테고리 PK 배열
-- category_names: 카테고리명 배열
-- 기타 공고 정보
-""",
-        responses={200: PostingSerializer, 404: "존재하지 않음"},
-        tags=["Posting"]
-    )
-    def retrieve(self, request, *args, **kwargs):
-        posting = self.get_object()
-        ser = self.get_serializer(posting)
-        return Response(ser.data, status=200)
-
-    # 제안 전송 (POST)
-    @swagger_auto_schema(
-        operation_summary="공고 기반 제안 전송",
-        operation_description="""
-아티스트가 특정 공연 공고에 대해 공간에 제안을 보냅니다.
-
-- 이 API는 **아티스트만** 사용할 수 있습니다.
-- 요청 URL의 {id}는 제안하려는 공연 공고의 id입니다.
-- 요청 body에는 **message**만 입력하면 됩니다.
-- 아티스트 정보는 토큰(로그인)에서 자동으로 추출됩니다.
-- 공간 정보는 해당 공고의 space로 자동 연결됩니다.
-
-**예시 요청**
-```json
-POST /api/v1/postings/1/suggestion/
-{
-  "message": "이 공연에 참여하고 싶어요!"
-}
-```
-""",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지 (필수)")
-            },
-            required=['message']
-        ),
-        responses={
-            201: openapi.Response(
-                description="제안 생성 결과",
-                examples={"application/json": {
-                    "id": 1,
-                    "artist": 2,
-                    "space": 3,
-                    "posting": 1,
-                    "message": "이 공연에 참여하고 싶어요!",
-                    "is_accepted": False,
-                    "is_read": False,
-                    "created_at": "2025-09-14T12:34:56Z"
-                }}
-            ),
-            400: "유효성 오류"
-        },
-        tags=["Posting"]
-    )
-    @action(detail=True, methods=["post"], url_path="suggestion", permission_classes=[IsAuthenticated])
-    def send_suggestion(self, request, pk=None):
-        posting = self.get_object()
-        user = request.user
-
-        # 1번: 아티스트만 접근 가능하게 role 체크
-        if not hasattr(user, "role") or user.role != "artist":
-            return forbidden("아티스트만 제안을 보낼 수 있습니다.", "role")
+        as_of = request.query_params.get("as_of")
 
         try:
-            my_artist = Artist.objects.get(user=user)
-        except Artist.DoesNotExist:
-            return Response({"detail": "아티스트 프로필이 없습니다."}, status=400)
+            with get_duck_conn() as con:
+                sql = """
+                    SELECT month, forecast, yhat_lower, yhat_upper
+                    FROM analytics.demand_forecast_asof
+                    WHERE as_of_month = CAST(? AS DATE)
+                      AND LOWER(region) = ?
+                      AND LOWER(genre)  = ?
+                """
+                rows = con.execute(sql, [as_of, region, genre]).fetchall()
+                items = [{
+                    "month": str(r[0])[:10],
+                    "forecast": r[1],
+                    "yhat_lower": r[2],
+                    "yhat_upper": r[3],
+                } for r in (rows or [])]
 
-        message = request.data.get("message", "").strip()
-        if not message:
-            return Response({"detail": "message는 필수입니다."}, status=400)
+                # fallback
+                if not items or all(r["forecast"] is None for r in items):
+                    fallback_sql = """
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = ?
+                    """
+                    rows = con.execute(fallback_sql, [as_of, genre]).fetchall()
+                    items = [{"month": str(r[0])[:10], "forecast": r[1],
+                              "yhat_lower": r[2], "yhat_upper": r[3]} for r in (rows or [])]
 
-        suggestion = Suggestion.objects.create(
-            sender_type=Suggestion.SENDER_ARTIST,
-            artist=my_artist,
-            space=posting.space,
-            posting=posting,
-            message=message
-        )
+                if not items or all(r["forecast"] is None for r in items):
+                    fallback_sql2 = """
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = '(all)'
+                    """
+                    rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                    items = [{"month": str(r[0])[:10], "forecast": r[1],
+                              "yhat_lower": r[2], "yhat_upper": r[3]} for r in (rows or [])]
+        except Exception as e:
+            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
-        return Response(SuggestionSerializer(suggestion).data, status=201)
-    
-    # 공연 공고 부분 수정 (PATCH)
+        if not items:
+            return bad_request("해당 조합의 예측 결과가 없습니다.", "filters")
+
+        return Response({
+            "region": raw_region,
+            "genre": raw_genre,
+            "age_group": ag.get("value"),
+            "gender": self._gender_label(gd.get("value")),
+            "as_of": as_of,
+            "items": items
+        })
+
+    # ------------------ 2. Shortage ------------------
     @swagger_auto_schema(
-        operation_summary="공연 공고 부분 수정",
-        operation_description="PATCH: 일부 필드만 수정합니다.",
-        request_body=PostingSerializer,
-        responses={200: PostingSerializer, 400: "유효성 오류"},
-        tags=["Posting"]
-    )
-    def partial_update(self, request, *args, **kwargs):
-        posting = self.get_object()
-        guard = self._guard_space_owner(request, posting)
-        if guard:
-            return guard
+        operation_summary="공급 부족 지수 조회",
+        operation_description="""
+공급 부족 지수(=예측 구간폭 평균)를 반환합니다.
 
-        serializer = self.get_serializer(posting, data=request.data, partial=True)
-        if serializer.is_valid():
-            posting = serializer.save()
-            return Response(self.get_serializer(posting).data, status=200)
-        return bad_request(str(serializer.errors), "partial_update")
+⚠️ 지정 조건에 값이 없으면 `(ALL, ALL)`로 fallback합니다.
+        """,
+        tags=["Demand"]
+    )
+    @action(detail=False, methods=["get"])
+    def shortage(self, request):
+        raw_region = request.query_params.get("region")
+        raw_genre  = request.query_params.get("genre")
+        region = self._normalize(raw_region)
+        genre  = self._normalize(raw_genre)
+        as_of  = request.query_params.get("as_of")
+
+        if not region or not genre:
+            return bad_request("region과 genre는 필수입니다.", "region/genre")
+
+        try:
+            sql = """
+                SELECT AVG(yhat_upper - yhat_lower) AS shortage_index
+                FROM analytics.demand_forecast_asof
+                WHERE as_of_month = CAST(? AS DATE)
+                  AND LOWER(region) = ?
+                  AND LOWER(genre)  = ?
+            """
+            with get_duck_conn() as con:
+                rec = con.execute(sql, [as_of, region, genre]).fetchone()
+                if not rec or rec[0] is None:
+                    rec = con.execute(sql, [as_of, "(all)", "(all)"]).fetchone()
+            if not rec or rec[0] is None:
+                return bad_request("해당 조건의 shortage_index가 없습니다.", "region/genre/as_of")
+            shortage_index = rec[0]
+        except Exception as e:
+            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+
+        return Response({"region": raw_region, "genre": raw_genre, "as_of": as_of, "shortage_index": shortage_index})
+
+    # ------------------ 3. Recommendation ------------------
+    @swagger_auto_schema(
+        operation_summary="추천 지역/장르 조회",
+        operation_description="""
+특정 장르에 대해 인기 지역 TOP-N,  
+특정 지역에 대해 인기 장르 TOP-N을 반환합니다.
+
+⚠️ (ALL)은 허용되지 않습니다.
+        """,
+        manual_parameters=[
+            openapi.Parameter("region", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description="지역 (서울특별시 등). (ALL) 금지", required=False),
+            openapi.Parameter("genre", openapi.IN_QUERY, type=openapi.TYPE_STRING,
+                              description=f"장르명 {GENRE_CHOICES}. (ALL) 금지", required=False),
+            openapi.Parameter("top_n", openapi.IN_QUERY, type=openapi.TYPE_INTEGER,
+                              description="상위 N개 (기본값 3)", required=False),
+        ],
+        tags=["Demand"]
+    )
+    @action(detail=False, methods=["get"])
+    def recommendation(self, request):
+        raw_region = request.query_params.get("region")
+        raw_genre  = request.query_params.get("genre")
+        region = self._normalize(raw_region) if raw_region else None
+        genre  = self._normalize(raw_genre)  if raw_genre  else None
+
+        if bool(region) == bool(genre):
+            return bad_request("region 또는 genre 중 하나만 전달하세요.", "region/genre")
+
+        try:
+            top_n = max(1, int(request.query_params.get("top_n", 3)))
+        except ValueError:
+            top_n = 3
+
+        try:
+            with get_duck_conn() as con:
+                bsql = """
+                    WITH mx AS (
+                        SELECT date_trunc('month', MAX(month)) AS end_month
+                        FROM analytics.demand_modeling_grid
+                    )
+                    SELECT
+                        (SELECT end_month FROM mx),
+                        ((SELECT end_month FROM mx) - INTERVAL 2 MONTH),
+                        ((SELECT end_month FROM mx) + INTERVAL 1 MONTH)
+                """
+                end_month, start_month, end_month_excl = con.execute(bsql).fetchone()
+
+                if genre and not region:
+                    sql = f"""
+                        SELECT region, SUM(demand) AS total_orders
+                        FROM analytics.demand_modeling_grid
+                        WHERE month >= ? AND month < ?
+                          AND LOWER(genre) = ?
+                          AND age_group = -1 AND gender = -1
+                          AND region IS NOT NULL
+                          AND region NOT IN ('(ALL)', 'all')
+                        GROUP BY region
+                        ORDER BY total_orders DESC NULLS LAST
+                        LIMIT {top_n}
+                    """
+                    rows = con.execute(sql, [start_month, end_month_excl, genre]).fetchall()
+                    results = [{"region": r[0], "total_orders": int(r[1])} for r in rows]
+                    return Response({
+                        "pivot": "by_genre",
+                        "genre": raw_genre,
+                        "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
+                        "top_n": top_n,
+                        "results": results
+                    })
+
+                if region and not genre:
+                    sql = f"""
+                        SELECT genre, SUM(demand) AS total_orders
+                        FROM analytics.demand_modeling_grid
+                        WHERE month >= ? AND month < ?
+                          AND LOWER(region) = ?
+                          AND age_group = -1 AND gender = -1
+                          AND genre IS NOT NULL
+                          AND genre NOT IN ('(ALL)', 'all')
+                        GROUP BY genre
+                        ORDER BY total_orders DESC NULLS LAST
+                        LIMIT {top_n}
+                    """
+                    rows = con.execute(sql, [start_month, end_month_excl, region]).fetchall()
+                    results = [{"genre": r[0], "total_orders": int(r[1])} for r in rows]
+                    return Response({
+                        "pivot": "by_region",
+                        "region": raw_region,
+                        "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
+                        "top_n": top_n,
+                        "results": results
+                    })
+        except Exception as e:
+            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
