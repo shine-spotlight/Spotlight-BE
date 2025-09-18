@@ -160,4 +160,18 @@ class SuggestionListSerializer(serializers.ModelSerializer):
             return [c.name for c in obj.space.categories.all()]
         return []
 
-# SuggestionViewSet에서 목록/상세 응답에 SuggestionListSerializer 사용
+class SuggestionPhoneShareSerializer(serializers.ModelSerializer):
+    artist_phone = serializers.SerializerMethodField()
+    space_phone = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Suggestion
+        fields = ["artist_phone", "space_phone"]
+
+    def get_artist_phone(self, obj):
+        artist_user = obj.artist.user if obj.artist else None
+        return artist_user.phone_number if artist_user else None
+
+    def get_space_phone(self, obj):
+        space_user = obj.space.user if obj.space else None
+        return space_user.phone_number if space_user else None

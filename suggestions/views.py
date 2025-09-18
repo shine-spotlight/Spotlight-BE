@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from .models import Suggestion
-from .serializers import SuggestionSerializer, SuggestionListSerializer
+from .serializers import SuggestionSerializer, SuggestionListSerializer, SuggestionPhoneShareSerializer
 from artists.models import Artist
 from spaces.models import Space
 from notifications.models import Notification
@@ -275,3 +275,60 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             suggestion.save(update_fields=["is_read", "updated_at"])
 
         return Response({"id": suggestion.id, "is_read": True}, status=200)
+        # =====================
+    # 제안 전화번호 공유
+    # =====================
+    @swagger_auto_schema(
+        operation_summary="제안 전화번호 공유",
+        operation_description="""
+is_accepted=True 상태의 제안에서만 아티스트/공간 간 서로의 전화번호를 공유합니다.
+
+- 아티스트가 보낸 제안: 수락된 후 아티스트와 공간 소유자가 서로의 번호를 확인 가능  
+- 공간이 보낸 제안: 수락된 후 동일하게 번호 공유  
+- 제3자는 절대 접근 불가  
+""",
+        responses={
+            200: openapi.Response(
+                description="전화번호 공유 성공",
+                examples={
+                    "application/json": {
+                        "artist_phone": "010-1234-5678",
+                        "space_phone": "010-9876-5432"
+                    }
+                }
+            ),
+            403: openapi.Response(
+                description="권한 없음",
+                examples={
+                    "application/json": {
+                        "detail": "제안 당사자만 접근할 수 있습니다.",
+                        "code": "permission_denied",
+                        "field": "share-phone"
+                    }
+                }
+            )
+        },
+        tags=["Suggestion"]
+    )
+    @action(detail=True, methods=["get"], url_path="share-phone")
+    @transaction.atomic
+    def share_phone(self, request, pk=None):
+        suggestion = self.get_object()
+
+        # 1. 수락된 제안만 가능
+        if suggestion.is_accepted is not True:
+            return forbidden("전화번호 공유는 수락된 제안에서만 가능합니다.", "share-phone")
+
+        # 2. 당사자 판별 (artist.user, space.user)
+        artist_user = suggestion.artist.user if suggestion.artist else None
+        space_user = suggestion.space.user if suggestion.space else None
+
+        if not request.user.is_superuser and request.user not in [artist_user, space_user]:
+            return forbidden("제안 당사자만 전화번호를 확인할 수 있습니다.", "share-phone")
+
+        # 3. 전화번호 반환
+        return Response({
+            "artist_phone": artist_user.phone_number if artist_user else None,
+            "space_phone": space_user.phone_number if space_user else None,
+        }, status=200)
+
