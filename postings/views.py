@@ -189,8 +189,8 @@ class PostingViewSet(viewsets.ModelViewSet):
         region = request.query_params.get("region")
 
         # 기존 단일 category(PK) 필터
-        if category:
-            qs = qs.filter(categories__id=category)
+        # if category:
+        #     qs = qs.filter(categories__id=category)
 
         # categories(이름 배열) 필터
         if categories:
