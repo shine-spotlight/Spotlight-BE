@@ -5,9 +5,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import models
 
 from .models import Suggestion
-from .serializers import SuggestionSerializer
+from .serializers import SuggestionSerializer, SuggestionListSerializer
 from artists.models import Artist
 from spaces.models import Space
 from notifications.models import Notification
@@ -36,26 +37,15 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["get"], url_path="received")
     def received(self, request):
+        """내가 받은 제안서만 반환"""
         user = request.user
-        role = getattr(user, "role", None)
-        if role == "artist":
-            my_artist = self._get_my_artist(user)
-            if not my_artist:
-                return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
-            qs = self.queryset.filter(space__isnull=False, artist=my_artist)
-        elif role == "space":
-            my_space = self._get_my_space(user)
-            if not my_space:
-                return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
-            qs = self.queryset.filter(artist__isnull=False, space=my_space)
-        else:
-            return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
-
+        qs = self.get_queryset().filter(
+            (models.Q(sender_type=Suggestion.SENDER_ARTIST, space__user=user) |
+             models.Q(sender_type=Suggestion.SENDER_SPACE, artist__user=user))
+        )
         page = self.paginate_queryset(qs)
-        ser = self.get_serializer(page or qs, many=True)
-        if page is not None:
-            return self.get_paginated_response(ser.data)
-        return Response(ser.data, status=200)
+        serializer = SuggestionListSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
     @swagger_auto_schema(
         operation_summary="보낸 제안함",
@@ -64,26 +54,15 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["get"], url_path="sent")
     def sent(self, request):
+        """내가 보낸 제안서만 반환"""
         user = request.user
-        role = getattr(user, "role", None)
-        if role == "artist":
-            my_artist = self._get_my_artist(user)
-            if not my_artist:
-                return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
-            qs = self.queryset.filter(artist=my_artist)
-        elif role == "space":
-            my_space = self._get_my_space(user)
-            if not my_space:
-                return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
-            qs = self.queryset.filter(space=my_space)
-        else:
-            return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
-
+        qs = self.get_queryset().filter(
+            (models.Q(sender_type=Suggestion.SENDER_ARTIST, artist__user=user) |
+             models.Q(sender_type=Suggestion.SENDER_SPACE, space__user=user))
+        )
         page = self.paginate_queryset(qs)
-        ser = self.get_serializer(page or qs, many=True)
-        if page is not None:
-            return self.get_paginated_response(ser.data)
-        return Response(ser.data, status=200)
+        serializer = SuggestionListSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
     def _get_my_artist(self, user):
         try:
@@ -194,6 +173,21 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
         if role == "space" and my_space.user_id == receiver_obj.user_id:
             return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+
+        # 중복 체크
+        exists = Suggestion.objects.filter(artist_id=data["artist"], space_id=data["space"]).exists()
+        if exists:
+            return bad_request("이미 동일한 artist/space 조합의 제안이 존재합니다.", "artist/space")
+
+        # 포인트 차감(1000) - PointViewSet.deduct 호출
+        from points.views import PointViewSet
+        deduct_view = PointViewSet.as_view({'post': 'deduct'})
+        deduct_request = request._request
+        deduct_request._full_data = {'amount': 1000}
+        deduct_request.data = {'amount': 1000}
+        response = deduct_view(deduct_request)
+        if response.status_code != 201:
+            return bad_request("포인트가 부족합니다.", "point")
 
         ser = self.get_serializer(data=data, context={"request": request})
         if not ser.is_valid():
@@ -322,3 +316,21 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             suggestion.save(update_fields=["is_read", "updated_at"])
 
         return Response({"id": suggestion.id, "is_read": True}, status=200)
+
+    # create 중복 체크 및 포인트 차감 추가 (뷰)
+    def create(self, request, *args, **kwargs):
+        artist_id = request.data.get("artist")
+        space_id = request.data.get("space")
+        if artist_id and space_id:
+            exists = Suggestion.objects.filter(artist_id=artist_id, space_id=space_id).exists()
+            if exists:
+                return bad_request("이미 동일한 artist/space 조합의 제안이 존재합니다.", "artist/space")
+        # 포인트 차감 로직 (예시)
+        user = request.user
+        if hasattr(user, "profile") and user.profile.point < 10:
+            return bad_request("포인트가 부족합니다.", "point")
+        # 실제 차감
+        if hasattr(user, "profile"):
+            user.profile.point -= 10
+            user.profile.save()
+        return super().create(request, *args, **kwargs)

@@ -39,8 +39,10 @@ class SuggestionSerializer(serializers.ModelSerializer):
             "id", "sender_type", "artist_obj", "space_obj", "is_read", "receiver_phone", "opponent_image", "created_at", "updated_at"
         ]
 
+    # 요청자 기준으로 상대방 정보만 직렬화 (시리얼라이저)
     def get_artist_obj(self, obj):
-        if obj.artist:
+        request = self.context.get("request")
+        if obj.artist and request and request.user != obj.artist.user:
             return {
                 "id": obj.artist.id,
                 "name": getattr(obj.artist, "name", None)
@@ -48,7 +50,8 @@ class SuggestionSerializer(serializers.ModelSerializer):
         return None
 
     def get_space_obj(self, obj):
-        if obj.space:
+        request = self.context.get("request")
+        if obj.space and request and request.user != obj.space.user:
             return {
                 "id": obj.space.id,
                 "place_name": getattr(obj.space, "place_name", None)
