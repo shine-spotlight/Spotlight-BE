@@ -15,6 +15,7 @@ class SuggestionSerializer(serializers.ModelSerializer):
     artist_obj = serializers.SerializerMethodField(read_only=True)
     space_obj = serializers.SerializerMethodField(read_only=True)
     receiver_phone = serializers.SerializerMethodField(read_only=True)
+    opponent_image = serializers.SerializerMethodField(read_only=True)  # 추가
 
     class Meta:
         model = Suggestion
@@ -30,11 +31,12 @@ class SuggestionSerializer(serializers.ModelSerializer):
             "is_accepted",
             "is_read",
             "receiver_phone",
+            "opponent_image",  # 추가
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
-            "id", "sender_type", "artist_obj", "space_obj", "is_read", "receiver_phone", "created_at", "updated_at"
+            "id", "sender_type", "artist_obj", "space_obj", "is_read", "receiver_phone", "opponent_image", "created_at", "updated_at"
         ]
 
     def get_artist_obj(self, obj):
@@ -110,6 +112,40 @@ class SuggestionSerializer(serializers.ModelSerializer):
         if request.user.id == space_user_id:
             return obj.artist.user.phone_number
         # 제3자면 노출 X
+        return None
+
+    def get_opponent_image(self, obj):
+        """
+        상대방의 프로필 이미지를 반환:
+        - sender_type이 artist면 상대는 space → space.place_image의 첫 번째 이미지
+        - sender_type이 space면 상대는 artist → artist.profile_image
+        """
+        if obj.sender_type == Suggestion.SENDER_ARTIST and obj.space:
+            # 공간의 place_image(다중) 중 첫 번째
+            images = getattr(obj.space, "place_image", None)
+            if images:
+                # place_image가 ManyToMany나 related manager라면 .first() 사용
+                if hasattr(images, "all"):
+                    first_img = images.first()
+                    if first_img and hasattr(first_img, "image") and first_img.image:
+                        return first_img.image.url
+                # place_image가 리스트라면
+                elif isinstance(images, (list, tuple)) and images:
+                    img = images[0]
+                    if hasattr(img, "image") and img.image:
+                        return img.image.url
+            # place_image가 단일 필드라면
+            if hasattr(images, "url"):
+                return images.url
+            return None
+        elif obj.sender_type == Suggestion.SENDER_SPACE and obj.artist:
+            # 아티스트의 profile_image
+            profile_image = getattr(obj.artist, "profile_image", None)
+            if profile_image:
+                if hasattr(profile_image, "url"):
+                    return profile_image.url
+                return str(profile_image)
+            return None
         return None
 
 class SuggestionListSerializer(serializers.ModelSerializer):
