@@ -1,7 +1,23 @@
 from rest_framework import serializers
+from django.conf import settings
 from .models import Posting
 from categories.models import Category
 from spaces.models import Space
+
+def _norm_to_list(value):
+    """
+    입력값을 항상 배열로 보정
+    - None → []
+    - list/tuple → list
+    - 문자열 → [문자열]
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    s = str(value).strip()
+    return [s] if s else []
+
 
 class PostingSerializer(serializers.ModelSerializer):
     space_id = serializers.PrimaryKeyRelatedField(
@@ -9,10 +25,16 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
     space_address = serializers.CharField(source="space.address", read_only=True)
-    categories = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(), many=True, required=False
+
+    # ✅ 카테고리: 이름 기반 입력
+    categories = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
     )
     category_names = serializers.SerializerMethodField(read_only=True)
+
+    # ✅ 이미지: 파일 업로드만 입력, URL은 자동 생성
+    posting_image = serializers.ImageField(write_only=True, required=False)
+    posting_image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Posting
@@ -24,15 +46,17 @@ class PostingSerializer(serializers.ModelSerializer):
             "categories", "category_names",
             "price_type", "price_amount", "date", "created_at",
         ]
-        read_only_fields = ["id", "created_at", "space", "category_names", "space_address"]
+        read_only_fields = ["id", "created_at", "space", "category_names", "space_address", "posting_image_url"]
 
+    # ✅ 카테고리 이름 반환
     def get_category_names(self, obj):
         return [c.name for c in obj.categories.all()]
 
-    def validate_posting_image_url(self, url):
-        if url and not (str(url).startswith("http://") or str(url).startswith("https://")):
-            raise serializers.ValidationError("posting_image_url은 http:// 또는 https:// 이어야 합니다.")
-        return url
+    # ✅ 업로드된 이미지 주소 반환
+    def get_posting_image_url(self, obj):
+        if obj.posting_image:
+            return f"{settings.MEDIA_URL}{obj.posting_image}"
+        return None
 
     def validate(self, attrs):
         # 가격 규칙
@@ -45,3 +69,35 @@ class PostingSerializer(serializers.ModelSerializer):
         if price_type in (Posting.PRICE_FREE, Posting.PRICE_NEGOTIABLE):
             attrs["price_amount"] = None
         return attrs
+
+    # ✅ create 시 카테고리 이름 매핑
+    def create(self, validated_data):
+        categories_data = _norm_to_list(validated_data.pop("categories", []))
+        posting = super().create(validated_data)
+
+        categories = []
+        for name in categories_data:
+            try:
+                cat = Category.objects.get(name=name.strip())
+                categories.append(cat)
+            except Category.DoesNotExist:
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
+        if categories:
+            posting.categories.set(categories)
+        return posting
+
+    # ✅ update 시 카테고리 이름 매핑
+    def update(self, instance, validated_data):
+        categories_data = _norm_to_list(validated_data.pop("categories", []))
+        posting = super().update(instance, validated_data)
+
+        if categories_data:
+            categories = []
+            for name in categories_data:
+                try:
+                    cat = Category.objects.get(name=name.strip())
+                    categories.append(cat)
+                except Category.DoesNotExist:
+                    raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
+            posting.categories.set(categories)
+        return posting
