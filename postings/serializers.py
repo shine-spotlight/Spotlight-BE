@@ -86,12 +86,14 @@ class PostingSerializer(serializers.ModelSerializer):
             posting.categories.set(categories)
         return posting
 
-    # ✅ update 시 카테고리 이름 매핑
+    # ✅ update 시 카테고리 이름 매핑 (PATCH 허용)
     def update(self, instance, validated_data):
-        categories_data = _norm_to_list(validated_data.pop("categories", []))
+        # PATCH 요청에서 categories가 없으면 기존 값 유지
+        categories_data = validated_data.pop("categories", None)
         posting = super().update(instance, validated_data)
 
-        if categories_data:
+        if categories_data is not None:
+            categories_data = _norm_to_list(categories_data)
             categories = []
             for name in categories_data:
                 try:
@@ -100,4 +102,5 @@ class PostingSerializer(serializers.ModelSerializer):
                 except Category.DoesNotExist:
                     raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
             posting.categories.set(categories)
+        # categories가 없으면 기존 카테고리 유지
         return posting
