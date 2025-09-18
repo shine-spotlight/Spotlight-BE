@@ -129,6 +129,9 @@ class DemandViewSet(viewsets.ViewSet):
             "yhat_upper": r.get("yhat_upper"),
         } for r in (rows or [])]
 
+        # NaN/Inf → None 변환
+        items = _clean_json(items)
+
         if not items:
             return bad_request("해당 조합의 예측 결과가 없습니다. 필터(-1/미상/(ALL))를 확인하세요.", "filters")
 
@@ -339,3 +342,14 @@ class DemandViewSet(viewsets.ViewSet):
             return bad_request(f"DuckDB 연결/쿼리 오류: {e}", "duckdb")
         except Exception as e:
             return bad_request(f"예상치 못한 오류: {e}", "unknown")
+
+def _clean_json(obj):
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: _clean_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+    return obj
