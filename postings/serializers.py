@@ -9,14 +9,39 @@ def _norm_to_list(value):
     입력값을 항상 배열로 보정
     - None → []
     - list/tuple → list
-    - 문자열 → [문자열]
+    - 문자열 → [문자열] 또는 파싱
     """
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
-        return list(value)
-    s = str(value).strip()
-    return [s] if s else []
+        items = list(value)
+    else:
+        s = str(value).strip()
+        # 문자열이 리스트 형태일 때 파싱
+        import ast
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, (list, tuple)):
+                items = list(parsed)
+            else:
+                items = [s]
+        except Exception:
+            # 쉼표로 구분된 문자열 처리
+            if "," in s:
+                items = [x for x in s.split(",")]
+            else:
+                items = [s] if s else []
+    # 정규화: 소문자, 공백제거, 빈값제거, 중복제거
+    normed = []
+    seen = set()
+    for x in items:
+        if not isinstance(x, str):
+            x = str(x)
+        v = x.strip().lower()
+        if v and v not in seen:
+            normed.append(v)
+            seen.add(v)
+    return normed
 
 
 class PostingSerializer(serializers.ModelSerializer):
@@ -78,7 +103,7 @@ class PostingSerializer(serializers.ModelSerializer):
         categories = []
         for name in categories_data:
             try:
-                cat = Category.objects.get(name=name.strip())
+                cat = Category.objects.get(name=name)
                 categories.append(cat)
             except Category.DoesNotExist:
                 raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
@@ -88,7 +113,6 @@ class PostingSerializer(serializers.ModelSerializer):
 
     # ✅ update 시 카테고리 이름 매핑 (PATCH 허용)
     def update(self, instance, validated_data):
-        # PATCH 요청에서 categories가 없으면 기존 값 유지
         categories_data = validated_data.pop("categories", None)
         posting = super().update(instance, validated_data)
 
@@ -97,10 +121,9 @@ class PostingSerializer(serializers.ModelSerializer):
             categories = []
             for name in categories_data:
                 try:
-                    cat = Category.objects.get(name=name.strip())
+                    cat = Category.objects.get(name=name)
                     categories.append(cat)
                 except Category.DoesNotExist:
                     raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
             posting.categories.set(categories)
-        # categories가 없으면 기존 카테고리 유지
         return posting
