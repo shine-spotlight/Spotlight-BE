@@ -50,15 +50,12 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     space = serializers.CharField(source="space.place_name", read_only=True)
     space_address = serializers.CharField(source="space.address", read_only=True)
-    place_region = serializers.CharField(source="space.place_region", read_only=True)  # ✅ 추가
+    place_region = serializers.CharField(source="space.place_region", read_only=True)
 
-    # ❌ 기존
-    # categories = serializers.ListField(
-    #     child=serializers.CharField(), write_only=True, required=False
-    # )
-
-    # ✅ 수정: CharField로 받고 내부에서 배열로 파싱
-    categories = serializers.CharField(write_only=True, required=False)
+    # ✅ ListField로 변경: Swagger에서도 array of string으로 노출됨
+    categories = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
+    )
     category_names = serializers.SerializerMethodField(read_only=True)
 
     # ✅ 이미지: 파일 업로드만 입력, URL은 자동 생성
@@ -103,30 +100,24 @@ class PostingSerializer(serializers.ModelSerializer):
             attrs["price_amount"] = None
         return attrs
 
-    def to_internal_value(self, data):
-        data = data.copy()
-        if "categories" in data:
-            raw = data["categories"]
-            if isinstance(raw, str):
-                import json
-                try:
-                    # JSON 문자열 → 배열
-                    data["categories"] = json.loads(raw)
-                except Exception:
-                    # 쉼표로 구분된 문자열 처리
-                    data["categories"] = [x.strip() for x in raw.split(",") if x.strip()]
-        return super().to_internal_value(data)
+    # def to_internal_value(self, data):
+    #     data = data.copy()
+    #     if "categories" in data:
+    #         raw = data["categories"]
+    #         if isinstance(raw, str):
+    #             import json
+    #             try:
+    #                 # JSON 문자열 → 배열
+    #                 data["categories"] = json.loads(raw)
+    #             except Exception:
+    #                 # 쉼표로 구분된 문자열 처리
+    #                 data["categories"] = [x.strip() for x in raw.split(",") if x.strip()]
+    #     return super().to_internal_value(data)
 
     # ✅ create 시 카테고리 이름 매핑
     def create(self, validated_data):
         categories_data = validated_data.pop("categories", [])
         # 배열이 아닐 경우 보정
-        if isinstance(categories_data, str):
-            import json
-            try:
-                categories_data = json.loads(categories_data)
-            except Exception:
-                categories_data = [x.strip() for x in categories_data.split(",") if x.strip()]
         categories_data = _norm_to_list(categories_data)
         posting = super().create(validated_data)
 
@@ -147,13 +138,6 @@ class PostingSerializer(serializers.ModelSerializer):
         posting = super().update(instance, validated_data)
 
         if categories_data is not None:
-            # 배열이 아닐 경우 보정
-            if isinstance(categories_data, str):
-                import json
-                try:
-                    categories_data = json.loads(categories_data)
-                except Exception:
-                    categories_data = [x.strip() for x in categories_data.split(",") if x.strip()]
             categories_data = _norm_to_list(categories_data)
             categories = []
             for name in categories_data:
