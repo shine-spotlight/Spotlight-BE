@@ -127,3 +127,9 @@ class PostingSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {name}"})
             posting.categories.set(categories)
         return posting
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        if "categories" in data:
+            data["categories"] = _norm_to_list(data["categories"])
+        return super().to_internal_value(data)
