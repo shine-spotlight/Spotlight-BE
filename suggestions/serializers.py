@@ -17,29 +17,22 @@ class SuggestionSerializer(serializers.ModelSerializer):
 
     receiver_phone = serializers.SerializerMethodField(read_only=True)
     opponent_image = serializers.SerializerMethodField(read_only=True)  # 추가
-
+    artist_obj = serializers.SerializerMethodField(read_only=True)  # ✅ 추가
+    space_obj = serializers.SerializerMethodField(read_only=True)   # ✅ 추가
 
     class Meta:
         model = Suggestion
         fields = [
-            "id",
-            "sender_type",
-            "artist", "artist_name", "space", "space_name",
-
-            "posting",
-            "message",
-            "is_free_allowed",
-            "is_performed_confirmed",
-            "is_accepted",
-            "is_read",
-            "receiver_phone",
-            "opponent_image",  # 추가
-            "created_at",
-            "updated_at",
+            "id", "sender_type",
+            "artist", "space",
+            "artist_obj", "space_obj",   # ✅ 추가
+            "posting", "message",
+            "is_free_allowed", "is_performed_confirmed",
+            "is_accepted", "is_read",
+            "receiver_phone", "opponent_image",
+            "created_at", "updated_at",
         ]
-        read_only_fields = [
-            "id", "is_read", "receiver_phone", "opponent_image", "created_at", "updated_at"
-        ]  # "sender_type" 제거됨
+        read_only_fields = ["id", "created_at", "updated_at"]
 
     # 요청자 기준으로 상대방 정보만 직렬화 (시리얼라이저)
     # def get_artist_obj(self, obj):
@@ -140,6 +133,16 @@ class SuggestionSerializer(serializers.ModelSerializer):
                     return profile_image.url
                 return str(profile_image)
             return None
+        return None
+
+    def get_artist_obj(self, obj):
+        if obj.artist:
+            return {"id": obj.artist.id, "name": obj.artist.name}
+        return None
+
+    def get_space_obj(self, obj):
+        if obj.space:
+            return {"id": obj.space.id, "place_name": obj.space.place_name}
         return None
 
 class SuggestionListSerializer(serializers.ModelSerializer):
