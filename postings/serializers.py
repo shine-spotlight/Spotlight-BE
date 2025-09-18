@@ -131,5 +131,11 @@ class PostingSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         data = data.copy()
         if "categories" in data:
-            data["categories"] = _norm_to_list(data["categories"])
+            raw = data["categories"]
+            if isinstance(raw, str):
+                import json
+                try:
+                    data["categories"] = json.loads(raw)
+                except Exception:
+                    data["categories"] = [x.strip() for x in raw.split(",") if x.strip()]
         return super().to_internal_value(data)
