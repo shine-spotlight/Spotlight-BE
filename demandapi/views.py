@@ -4,7 +4,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .duckdb_adapter import get_forecast, get_duck_conn
-import duckdb  # 추가
+import duckdb  # 추가배포
 
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
