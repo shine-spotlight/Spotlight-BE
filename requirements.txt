@@ -27,3 +27,4 @@ wheel==0.45.1
 typing_extensions==4.15.0
 tzdata==2025.2
 whitenoise==6.7.0
+duckdb==1.4.0
