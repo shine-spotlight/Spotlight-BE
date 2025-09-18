@@ -20,7 +20,7 @@ class LikeSerializer(serializers.ModelSerializer):
             "target_name", "thumbnail", "address", "categories", "created_at"
         ]
         read_only_fields = [
-            "id", "user_id", "target_type", "target_id",
+            "id", "user_id", "target_type",
             "target_name", "thumbnail", "address", "categories", "created_at"
         ]
 
