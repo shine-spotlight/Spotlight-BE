@@ -36,8 +36,8 @@ class SuggestionSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = [
-            "id", "sender_type", "artist_obj", "space_obj", "is_read", "receiver_phone", "opponent_image", "created_at", "updated_at"
-        ]
+            "id", "artist_obj", "space_obj", "is_read", "receiver_phone", "opponent_image", "created_at", "updated_at"
+        ]  # "sender_type" 제거됨
 
     # 요청자 기준으로 상대방 정보만 직렬화 (시리얼라이저)
     def get_artist_obj(self, obj):
@@ -59,37 +59,26 @@ class SuggestionSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
-        # 조회/리스트 등에서는 validate를 건너뜀
         request = self.context.get("request", None)
         if request and request.method == "PATCH":
             message = attrs.get("message", None)
-            # PATCH에서는 artist, space가 없어도 됨 (부분 수정)
             return attrs
         if request and request.method not in ("POST", "PUT", "PATCH"):
             return attrs
 
-        artist = attrs.get("artist", None)
-        space = attrs.get("space", None)
-
-        # 둘 다 없으면 에러 (둘 다 있으면 정상)
-        if not artist or not space:
-            raise serializers.ValidationError(
-                {"detail": "artist와 space 모두 필요합니다."}
-            )
-
-        # 메시지 필수
         message = attrs.get("message", "").strip()
         if not message:
             raise serializers.ValidationError({"message": "message는 필수입니다."})
 
-        # 조건부 필드 검증 (기존 그대로 유지)
+        # 조건부 필드 검증 (self.instance가 있을 때만 sender_type 체크)
         is_free_allowed = attrs.get("is_free_allowed", getattr(self.instance, "is_free_allowed", None) if self.instance else None)
         is_performed_confirmed = attrs.get("is_performed_confirmed", getattr(self.instance, "is_performed_confirmed", None) if self.instance else None)
-        sender_type = getattr(self.instance, "sender_type", None) if self.instance else None
-        if sender_type == Suggestion.SENDER_ARTIST and is_performed_confirmed is not None:
-            raise serializers.ValidationError({"is_performed_confirmed": "artist 발신에서는 허용되지 않습니다."})
-        if sender_type == Suggestion.SENDER_SPACE and is_free_allowed is not None:
-            raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
+        if self.instance:
+            sender_type = getattr(self.instance, "sender_type", None)
+            if sender_type == Suggestion.SENDER_ARTIST and is_performed_confirmed is not None:
+                raise serializers.ValidationError({"is_performed_confirmed": "artist 발신에서는 허용되지 않습니다."})
+            if sender_type == Suggestion.SENDER_SPACE and is_free_allowed is not None:
+                raise serializers.ValidationError({"is_free_allowed": "space 발신에서는 허용되지 않습니다."})
 
         return attrs
 

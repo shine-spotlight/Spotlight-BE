@@ -12,6 +12,7 @@ from .serializers import SuggestionSerializer, SuggestionListSerializer
 from artists.models import Artist
 from spaces.models import Space
 from notifications.models import Notification
+from points.models import PointTransaction
 
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
@@ -82,30 +83,6 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         except Space.DoesNotExist:
             return None
 
-    def _receiver_from_body(self, data: dict):
-        artist = data.get("artist")
-        space  = data.get("space")
-        artist = artist if artist not in [None, "", "null", 0, "0"] else None
-        space = space if space not in [None, "", "null", 0, "0"] else None
-
-        if artist and space:
-            return None, None, bad_request("artist와 space 중 하나만 지정해야 합니다.", "receiver")
-        if not artist and not space:
-            return None, None, bad_request("receiver가 없습니다. artist 또는 space 중 하나는 필수입니다.", "receiver")
-        if artist:
-            try:
-                artist_obj = Artist.objects.get(pk=artist)
-            except Artist.DoesNotExist:
-                return None, None, bad_request("존재하지 않는 artist 입니다.", "artist")
-            return "artist", artist_obj, None
-        if space:
-            try:
-                space_obj = Space.objects.get(pk=space)
-            except Space.DoesNotExist:
-                return None, None, bad_request("존재하지 않는 space 입니다.", "space")
-            return "space", space_obj, None
-        return None, None, bad_request("receiver를 판별할 수 없습니다.", "receiver")
-
     def _notify(self, user, content, target_link):
         Notification.objects.create(
             user=user,
@@ -118,10 +95,11 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         operation_description="""
 아티스트 또는 공간이 상대에게 제안을 생성합니다.
 
-- 토큰의 role(artist/space)로 본인 프로필이 자동 매핑됩니다.
-- 프론트는 상대방 id만 body에 보내면 됩니다.
+- 프론트는 '상대방 id'만 body에 보내면 됩니다.
   - 아티스트 → 공간: `{ "space": <상대 공간 id>, "message": "..." }`
   - 공간 → 아티스트: `{ "artist": <상대 아티스트 id>, "message": "..." }`
+- 본인 프로필(artist/space)은 토큰에서 자동 매핑됩니다.
+- sender_type은 서버에서 자동 지정되어 응답에만 포함됩니다.
 
 **사진 관련 안내**
 - 응답 데이터의 `opponent_image` 필드는 상대방의 대표 이미지를 제공합니다.
@@ -129,7 +107,15 @@ class SuggestionViewSet(viewsets.ModelViewSet):
     - 상대가 공간이면 `space.place_image`의 첫 번째 이미지 URL이 반환됩니다.
 - `artist_obj`, `space_obj` 필드로도 상대방의 id/이름(공간명) 정보를 확인할 수 있습니다.
 """,
-        request_body=SuggestionSerializer,
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'artist': openapi.Schema(type=openapi.TYPE_INTEGER, description="상대 아티스트 id (space→artist일 때만)"),
+                'space': openapi.Schema(type=openapi.TYPE_INTEGER, description="상대 공간 id (artist→space일 때만)"),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지")
+            },
+            required=['message']
+        ),
         responses={
             201: SuggestionSerializer,
             400: openapi.Response(
@@ -152,54 +138,62 @@ class SuggestionViewSet(viewsets.ModelViewSet):
         if role not in ("artist", "space"):
             return bad_request("role은 'artist' 또는 'space'여야 합니다.", "role")
 
-        receiver_kind, receiver_obj, err = self._receiver_from_body(request.data)
-        if err:
-            return err
-
         data = request.data.copy()
 
+        # role 기반 분기에서만 상대방 매핑
         if role == "artist":
             my_artist = self._get_my_artist(user)
             if not my_artist:
                 return bad_request("해당 유저의 Artist 프로필이 없습니다.", "artist")
-            if receiver_kind != "space":
-                return bad_request("아티스트는 공간에게만 제안할 수 있습니다.", "space")
+            space_id = data.get("space")
+            if not space_id:
+                return bad_request("상대 공간 id(space)는 필수입니다.", "space")
             data["artist"] = my_artist.id
-            data["space"] = receiver_obj.id
-        else:  # role == "space"
+            data["sender_type"] = Suggestion.SENDER_ARTIST
+            receiver_obj = Space.objects.filter(pk=space_id).first()
+            if not receiver_obj:
+                return bad_request("존재하지 않는 space 입니다.", "space")
+            if my_artist.user_id == receiver_obj.user_id:
+                return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+        elif role == "space":
             my_space = self._get_my_space(user)
             if not my_space:
                 return bad_request("해당 유저의 Space 프로필이 없습니다.", "space")
-            if receiver_kind != "artist":
-                return bad_request("공간은 아티스트에게만 제안할 수 있습니다.", "artist")
+            artist_id = data.get("artist")
+            if not artist_id:
+                return bad_request("상대 아티스트 id(artist)는 필수입니다.", "artist")
             data["space"] = my_space.id
-            data["artist"] = receiver_obj.id
-
-        if role == "artist" and my_artist.user_id == receiver_obj.user_id:
-            return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
-        if role == "space" and my_space.user_id == receiver_obj.user_id:
-            return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
+            data["sender_type"] = Suggestion.SENDER_SPACE
+            receiver_obj = Artist.objects.filter(pk=artist_id).first()
+            if not receiver_obj:
+                return bad_request("존재하지 않는 artist 입니다.", "artist")
+            if my_space.user_id == receiver_obj.user_id:
+                return bad_request("본인에게는 제안할 수 없습니다.", "receiver")
 
         # 중복 체크
         exists = Suggestion.objects.filter(artist_id=data["artist"], space_id=data["space"]).exists()
         if exists:
             return bad_request("이미 동일한 artist/space 조합의 제안이 존재합니다.", "artist/space")
 
-        # 포인트 차감(1000) - PointViewSet.deduct 호출
-        from points.views import PointViewSet
-        deduct_view = PointViewSet.as_view({'post': 'deduct'})
-        deduct_request = request._request
-        deduct_request._full_data = {'amount': 1000}
-        deduct_request.data = {'amount': 1000}
-        response = deduct_view(deduct_request)
-        if response.status_code != 201:
+        # 포인트 잔액 계산 및 차감 (PointTransaction 기반만 사용)
+        balance = sum([
+            tx.amount if tx.transaction_type == "charge" else -tx.amount
+            for tx in PointTransaction.objects.filter(user=user)
+        ])
+        if balance < 1000:
             return bad_request("포인트가 부족합니다.", "point")
 
         ser = self.get_serializer(data=data, context={"request": request})
         if not ser.is_valid():
             return bad_request(str(ser.errors))
-
         instance: Suggestion = ser.save()
+
+        # 포인트 차감 기록 (PointTransaction만)
+        PointTransaction.objects.create(
+            user=user,
+            amount=1000,
+            transaction_type="deduct"
+        )
 
         # 알림 (수신자에게)
         if instance.sender_type == Suggestion.SENDER_ARTIST:
@@ -322,21 +316,3 @@ class SuggestionViewSet(viewsets.ModelViewSet):
             suggestion.save(update_fields=["is_read", "updated_at"])
 
         return Response({"id": suggestion.id, "is_read": True}, status=200)
-
-    # create 중복 체크 및 포인트 차감 추가 (뷰)
-    def create(self, request, *args, **kwargs):
-        artist_id = request.data.get("artist")
-        space_id = request.data.get("space")
-        if artist_id and space_id:
-            exists = Suggestion.objects.filter(artist_id=artist_id, space_id=space_id).exists()
-            if exists:
-                return bad_request("이미 동일한 artist/space 조합의 제안이 존재합니다.", "artist/space")
-        # 포인트 차감 로직 (예시)
-        user = request.user
-        if hasattr(user, "profile") and user.profile.point < 10:
-            return bad_request("포인트가 부족합니다.", "point")
-        # 실제 차감
-        if hasattr(user, "profile"):
-            user.profile.point -= 10
-            user.profile.save()
-        return super().create(request, *args, **kwargs)
