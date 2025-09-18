@@ -40,7 +40,7 @@ class ArtistSerializer(serializers.ModelSerializer):
             "equipments", "equipments_display", "portfolio_links",
             "profile_image",  "region",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
-            "is_liked", "artist_onboarding", "place_image_url"
+            "is_liked", "artist_onboarding", "profile_image_url"
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "phone_number", "categories_display", "profile_image_url", "is_liked", "artist_onboarding"

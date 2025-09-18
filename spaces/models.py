@@ -26,7 +26,7 @@ class Space(models.Model):
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
     # 단수형 필드명 유지 (입력용, 여러 장 순차 저장)
-    place_image = models.ImageField(upload_to="spaces/place/", blank=True, null=True)
+    place_image = models.ImageField(upload_to="spaces/place/", blank=True, null=True, max_length=1000)
     # 여러 이미지의 URL을 배열로 저장 (출력용)
     place_image_url = models.JSONField(default=list, blank=True)
     equipments = models.ManyToManyField(
