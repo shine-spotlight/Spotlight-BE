@@ -16,7 +16,10 @@ class DemandViewSet(viewsets.ViewSet):
         if not value:
             return None
         return value.strip().lower()
-    
+
+    def _is_all(self, value: str) -> bool:
+        return str(value).strip().lower() in {"all", "(all)"}
+
     # age_group: -1=전체, 미상=IS NULL, 숫자(10/20/..)=그 값
     def _parse_age_group2(self, value: str | None):
         if value is None or str(value).strip() == "":
@@ -103,27 +106,27 @@ class DemandViewSet(viewsets.ViewSet):
 
         # 어댑터 규약: None → IS NULL, -1/0/1/2 → '='
         try:
-            rows = get_forecast(
-                region=region,
-                genre=genre,
-                as_of=as_of,
-                age_group=(
-                    -1 if ag["mode"]=="value" and ag["value"]==-1
-                    else (None if ag["mode"]=="unknown" else (ag["value"] if ag["mode"]=="value" else None))
-                ),
-                gender=(
-                    -1 if gd["mode"]=="value" and gd["value"]==-1
-                    else (0 if gd["mode"]=="value" and gd["value"]==0 else (gd["value"] if gd["mode"]=="value" else None))
-                )
-            )
+            # forecast 쿼리에서 as_of_month = CAST(? AS DATE)로 변경
+            sql = """
+                SELECT month, forecast, yhat_lower, yhat_upper
+                FROM analytics.demand_forecast_asof
+                WHERE as_of_month = CAST(? AS DATE)
+                  AND LOWER(region) = ?
+                  AND LOWER(genre)  = ?
+            """
+            with get_duck_conn() as con:
+                rows = con.execute(
+                    sql,
+                    [as_of, region, genre]
+                ).fetchall()
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
         items = [{
-            "month": str(r.get("month"))[:10],
-            "forecast": r.get("forecast"),
-            "yhat_lower": r.get("yhat_lower"),
-            "yhat_upper": r.get("yhat_upper"),
+            "month": str(r[0])[:10],
+            "forecast": r[1],
+            "yhat_lower": r[2],
+            "yhat_upper": r[3],
         } for r in (rows or [])]
 
         if not items:
@@ -177,10 +180,11 @@ class DemandViewSet(viewsets.ViewSet):
         if not region or not genre:
             return bad_request("region과 genre는 필수입니다.", "region/genre")
         try:
+            # shortage 쿼리에서 as_of_month = CAST(? AS DATE)로 변경
             sql = """
                 SELECT shortage_index
                 FROM analytics.shortage_index_asof
-                WHERE as_of_month = DATE ?
+                WHERE as_of_month = CAST(? AS DATE)
                   AND LOWER(region) = ?
                   AND LOWER(genre)  = ?
                 LIMIT 1
