@@ -13,7 +13,7 @@ import os
 def _norm_name(name: str) -> str:
     return " ".join(str(name).strip().split()).lower()
 
-# SpaceImageSerializer는 더 이상 사용하지 않으므로 주석 처리
+# SpaceImageSerializer는 더 이상 사용하지 않으므로 주석 처리배포
 # class SpaceImageSerializer(serializers.ModelSerializer):
 #     class Meta:
 #         model = SpaceImage
