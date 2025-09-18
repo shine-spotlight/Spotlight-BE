@@ -17,7 +17,7 @@ CANDIDATES = [
     os.path.join(DATA_DIR, "testout4.duckdb"),
 ]
 DUCK_PATH = next((p for p in CANDIDATES if p and os.path.exists(p)), os.path.join(DATA_DIR, "testout4.duckdb"))
-
+DB_PATH = "/opt/render/project/src/data/testout4.duckdb"
 @contextmanager
 def get_duck_conn():
     """DuckDB 연결을 context manager로 열고 닫음 (READ ONLY)"""

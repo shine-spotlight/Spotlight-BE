@@ -5,8 +5,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .duckdb_adapter import get_forecast, get_duck_conn
-
-DB_PATH = "/opt/render/project/src/data/testout5.duckdb"
+DB_PATH = "/opt/render/project/src/data/testout4.duckdb"
 
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
