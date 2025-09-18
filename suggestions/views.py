@@ -44,8 +44,11 @@ class SuggestionViewSet(viewsets.ModelViewSet):
              models.Q(sender_type=Suggestion.SENDER_SPACE, artist__user=user))
         )
         page = self.paginate_queryset(qs)
-        serializer = SuggestionListSerializer(page, many=True, context={"request": request})
-        return self.get_paginated_response(serializer.data)
+        if page is not None:
+            serializer = SuggestionListSerializer(page, many=True, context={"request": request})
+            return self.get_paginated_response(serializer.data)
+        serializer = SuggestionListSerializer(qs, many=True, context={"request": request})
+        return Response(serializer.data)
 
     @swagger_auto_schema(
         operation_summary="보낸 제안함",
@@ -61,8 +64,11 @@ class SuggestionViewSet(viewsets.ModelViewSet):
              models.Q(sender_type=Suggestion.SENDER_SPACE, space__user=user))
         )
         page = self.paginate_queryset(qs)
-        serializer = SuggestionListSerializer(page, many=True, context={"request": request})
-        return self.get_paginated_response(serializer.data)
+        if page is not None:
+            serializer = SuggestionListSerializer(page, many=True, context={"request": request})
+            return self.get_paginated_response(serializer.data)
+        serializer = SuggestionListSerializer(qs, many=True, context={"request": request})
+        return Response(serializer.data)
 
     def _get_my_artist(self, user):
         try:
