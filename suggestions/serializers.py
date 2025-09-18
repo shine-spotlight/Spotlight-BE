@@ -17,7 +17,7 @@ class SuggestionSerializer(serializers.ModelSerializer):
 
     receiver_phone = serializers.SerializerMethodField(read_only=True)
     opponent_image = serializers.SerializerMethodField(read_only=True)
-    opponent_image_url = serializers.SerializerMethodField(read_only=True, max_length=2048)  # 최대 길이 확장
+    opponent_image_url = serializers.SerializerMethodField(read_only=True)  # 최대 길이 확장
     artist_obj = serializers.SerializerMethodField(read_only=True)
     space_obj = serializers.SerializerMethodField(read_only=True)
 
