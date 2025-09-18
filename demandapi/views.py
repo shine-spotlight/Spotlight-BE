@@ -57,6 +57,24 @@ GENDER_CHOICES = """
 -  0 : 알 수 없음
 """
 
+def _select_closest_to_mean(rows):
+    # 널 제외한 forecast만 모으기
+    valid = [r[1] for r in rows if r[1] is not None]
+    if not valid:
+        return []
+    mean_val = sum(valid) / len(valid)
+    # 평균과 forecast 차이가 가장 작은 row 고르기
+    best_row = min(
+        [r for r in rows if r[1] is not None],
+        key=lambda r: abs(r[1] - mean_val)
+    )
+    return [{
+        "month": str(best_row[0])[:10],
+        "forecast": best_row[1],
+        "yhat_lower": best_row[2],
+        "yhat_upper": best_row[3],
+    }]
+
 class DemandViewSet(viewsets.ViewSet):
     # ------------------ 내부 유틸 ------------------
     def _normalize(self, value: str):
@@ -162,15 +180,10 @@ class DemandViewSet(viewsets.ViewSet):
                       AND LOWER(genre)  = ?
                 """
                 rows = con.execute(sql, [as_of, region, genre]).fetchall()
-                items = [{
-                    "month": str(r[0])[:10],
-                    "forecast": r[1],
-                    "yhat_lower": r[2],
-                    "yhat_upper": r[3],
-                } for r in (rows or [])]
+                items = _select_closest_to_mean(rows)
 
-                # ✅ 전부 None이면 fallback
-                if not items or all(r["forecast"] is None for r in items):
+                # ✅ 전부 None이거나 없으면 fallback
+                if not items:
                     fallback_sql = """
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
@@ -180,15 +193,10 @@ class DemandViewSet(viewsets.ViewSet):
                         ORDER BY month
                     """
                     rows = con.execute(fallback_sql, [as_of, genre]).fetchall()
-                    items = [{
-                        "month": str(r[0])[:10],
-                        "forecast": r[1],
-                        "yhat_lower": r[2],
-                        "yhat_upper": r[3],
-                    } for r in (rows or [])]
+                    items = _select_closest_to_mean(rows)
 
                 # 2차 fallback: (ALL, ALL)
-                if not items or all(r["forecast"] is None for r in items):
+                if not items:
                     fallback_sql2 = """
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
@@ -198,12 +206,7 @@ class DemandViewSet(viewsets.ViewSet):
                         ORDER BY month
                     """
                     rows = con.execute(fallback_sql2, [as_of]).fetchall()
-                    items = [{
-                        "month": str(r[0])[:10],
-                        "forecast": r[1],
-                        "yhat_lower": r[2],
-                        "yhat_upper": r[3],
-                    } for r in (rows or [])]
+                    items = _select_closest_to_mean(rows)
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
