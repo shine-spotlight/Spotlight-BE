@@ -137,6 +137,12 @@ class SuggestionViewSet(viewsets.ModelViewSet):
 - 프론트는 상대방 id만 body에 보내면 됩니다.
   - 아티스트 → 공간: `{ "space": <상대 공간 id>, "message": "..." }`
   - 공간 → 아티스트: `{ "artist": <상대 아티스트 id>, "message": "..." }`
+
+**사진 관련 안내**
+- 응답 데이터의 `opponent_image` 필드는 상대방의 대표 이미지를 제공합니다.
+    - 상대가 아티스트면 `artist.profile_image`의 URL이 반환됩니다.
+    - 상대가 공간이면 `space.place_image`의 첫 번째 이미지 URL이 반환됩니다.
+- `artist_obj`, `space_obj` 필드로도 상대방의 id/이름(공간명) 정보를 확인할 수 있습니다.
 """,
         request_body=SuggestionSerializer,
         responses={
