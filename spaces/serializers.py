@@ -27,7 +27,7 @@ class SpaceSerializer(serializers.ModelSerializer):
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
-    categories_display = serializers.SerializerMethodField(read_only=True)
+    categories_display = serializers.SerializerMethodField(read_only=True, max_length=1024)
 
     # 장비 입력/출력
     equipments = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
