@@ -5,11 +5,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .duckdb_adapter import get_duck_conn
 
+
 def bad_request(detail: str, field: str = ""):
     payload = {"detail": detail, "code": "invalid_param"}
     if field:
         payload["field"] = field
     return Response(payload, status=400)
+
 
 # ------------------ 지역/장르 정규화 ------------------
 def _normalize_region_token(tok: str) -> str:
@@ -32,6 +34,7 @@ def _normalize_region_token(tok: str) -> str:
     if "강원" in t: return "강원특별자치도"
     if "제주" in t: return "제주특별자치도"
     return t
+
 
 GENRE_CHOICES = [
     "(ALL)", "대중무용", "대중음악", "무용(서양/한국무용)", "뮤지컬",
@@ -57,13 +60,12 @@ GENDER_CHOICES = """
 -  0 : 알 수 없음
 """
 
+
 def _select_closest_to_mean(rows):
-    # 널 제외한 forecast만 모으기
     valid = [r[1] for r in rows if r[1] is not None]
     if not valid:
         return []
     mean_val = sum(valid) / len(valid)
-    # 평균과 forecast 차이가 가장 작은 row 고르기
     best_row = min(
         [r for r in rows if r[1] is not None],
         key=lambda r: abs(r[1] - mean_val)
@@ -74,6 +76,7 @@ def _select_closest_to_mean(rows):
         "yhat_lower": best_row[2],
         "yhat_upper": best_row[3],
     }]
+
 
 class DemandViewSet(viewsets.ViewSet):
     # ------------------ 내부 유틸 ------------------
@@ -100,7 +103,7 @@ class DemandViewSet(viewsets.ViewSet):
         if m:
             return {"mode": "value", "value": int(m.group(1))}
         return {"mode": "invalid", "value": None}
-    
+
     def _parse_gender2(self, value: str | None):
         if value is None or str(value).strip() == "":
             return {"mode": "unspecified", "value": None}
@@ -134,7 +137,7 @@ class DemandViewSet(viewsets.ViewSet):
 {GENDER_CHOICES}
 - as_of: 기준월 (YYYY-MM-01)
 
-⚠️ 조회 결과가 없을 경우, `(ALL, genre)` → `(ALL, ALL)` 순으로 fallback합니다.
+⚠️ 조회 결과가 없을 경우, 조건을 완화하여 (ALL, ALL)까지 fallback합니다.
         """,
         manual_parameters=[
             openapi.Parameter("region", openapi.IN_QUERY, type=openapi.TYPE_STRING,
@@ -153,12 +156,12 @@ class DemandViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def forecast(self, request):
         raw_region = request.query_params.get("region")
-        raw_genre  = request.query_params.get("genre")
+        raw_genre = request.query_params.get("genre")
         if not raw_region or not raw_genre:
             return bad_request("region과 genre는 필수입니다.", "region/genre")
 
         region = self._normalize(raw_region)
-        genre  = self._normalize(raw_genre)
+        genre = self._normalize(raw_genre)
 
         ag = self._parse_age_group2(request.query_params.get("age_group"))
         gd = self._parse_gender2(request.query_params.get("gender"))
@@ -171,47 +174,57 @@ class DemandViewSet(viewsets.ViewSet):
 
         try:
             with get_duck_conn() as con:
-                # 1차 시도: region + genre
-                sql = """
-                    SELECT month, forecast, yhat_lower, yhat_upper
-                    FROM analytics.demand_forecast_asof
-                    WHERE as_of_month = CAST(? AS DATE)
-                      AND LOWER(region) = ?
-                      AND LOWER(genre)  = ?
-                """
-                rows = con.execute(sql, [as_of, region, genre]).fetchall()
-                items = _select_closest_to_mean(rows)
+                candidates = [
+                    # region+genre+age+gender
+                    ("""
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                          AND (age_group = ? OR ? IS NULL)
+                          AND (gender = ? OR ? IS NULL)
+                    """, [as_of, region, genre,
+                          ag.get("value"), ag.get("value"),
+                          gd.get("value"), gd.get("value")]),
 
-                # ✅ 전부 None이거나 없으면 fallback
-                if not items:
-                    fallback_sql = """
+                    # region+genre
+                    ("""
+                        SELECT month, forecast, yhat_lower, yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                    """, [as_of, region, genre]),
+
+                    # ALL+genre
+                    ("""
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
                         WHERE as_of_month = CAST(? AS DATE)
                           AND LOWER(region) = '(all)'
                           AND LOWER(genre)  = ?
-                        ORDER BY month
-                    """
-                    rows = con.execute(fallback_sql, [as_of, genre]).fetchall()
-                    items = _select_closest_to_mean(rows)
+                    """, [as_of, genre]),
 
-                # 2차 fallback: (ALL, ALL)
-                if not items:
-                    fallback_sql2 = """
+                    # ALL+ALL
+                    ("""
                         SELECT month, forecast, yhat_lower, yhat_upper
                         FROM analytics.demand_forecast_asof
                         WHERE as_of_month = CAST(? AS DATE)
                           AND LOWER(region) = '(all)'
                           AND LOWER(genre)  = '(all)'
-                        ORDER BY month
-                    """
-                    rows = con.execute(fallback_sql2, [as_of]).fetchall()
+                    """, [as_of]),
+                ]
+
+                items = []
+                for sql, params in candidates:
+                    rows = con.execute(sql, params).fetchall()
                     items = _select_closest_to_mean(rows)
+                    if items:
+                        break
+
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
-
-        if not items:
-            return bad_request("해당 조합의 예측 결과가 없습니다.", "filters")
 
         return Response({
             "region": raw_region,
@@ -219,7 +232,7 @@ class DemandViewSet(viewsets.ViewSet):
             "age_group": ag.get("value"),
             "gender": self._gender_label(gd.get("value")),
             "as_of": as_of,
-            "items": items
+            "items": items or []
         })
 
     # ------------------ 2. Shortage ------------------
@@ -231,10 +244,10 @@ class DemandViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def shortage(self, request):
         raw_region = request.query_params.get("region")
-        raw_genre  = request.query_params.get("genre")
+        raw_genre = request.query_params.get("genre")
         region = self._normalize(raw_region)
-        genre  = self._normalize(raw_genre)
-        as_of  = request.query_params.get("as_of")
+        genre = self._normalize(raw_genre)
+        as_of = request.query_params.get("as_of")
 
         if not region or not genre:
             return bad_request("region과 genre는 필수입니다.", "region/genre")
@@ -257,7 +270,12 @@ class DemandViewSet(viewsets.ViewSet):
         except Exception as e:
             return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
 
-        return Response({"region": raw_region, "genre": raw_genre, "as_of": as_of, "shortage_index": shortage_index})
+        return Response({
+            "region": raw_region,
+            "genre": raw_genre,
+            "as_of": as_of,
+            "shortage_index": shortage_index
+        })
 
     # ------------------ 3. Recommendation ------------------
     @swagger_auto_schema(
@@ -276,9 +294,9 @@ class DemandViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def recommendation(self, request):
         raw_region = request.query_params.get("region")
-        raw_genre  = request.query_params.get("genre")
+        raw_genre = request.query_params.get("genre")
         region = self._normalize(raw_region) if raw_region else None
-        genre  = self._normalize(raw_genre)  if raw_genre  else None
+        genre = self._normalize(raw_genre) if raw_genre else None
 
         if bool(region) == bool(genre):
             return bad_request("region 또는 genre 중 하나만 전달하세요.", "region/genre")
@@ -320,7 +338,8 @@ class DemandViewSet(viewsets.ViewSet):
                     return Response({
                         "pivot": "by_genre",
                         "genre": raw_genre,
-                        "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
+                        "period": {"start_month": str(start_month)[:10],
+                                   "end_month": str(end_month)[:10]},
                         "top_n": top_n,
                         "results": results
                     })
@@ -343,7 +362,8 @@ class DemandViewSet(viewsets.ViewSet):
                     return Response({
                         "pivot": "by_region",
                         "region": raw_region,
-                        "period": {"start_month": str(start_month)[:10], "end_month": str(end_month)[:10]},
+                        "period": {"start_month": str(start_month)[:10],
+                                   "end_month": str(end_month)[:10]},
                         "top_n": top_n,
                         "results": results
                     })
