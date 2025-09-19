@@ -14,7 +14,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 ENV_PATH = os.environ.get("DUCKDB_ANALYTICS_DB")
 CANDIDATES = [
     ENV_PATH,
-    os.path.join(DATA_DIR, "testout5.1.duckdb"),
+    os.path.join(DATA_DIR, "testout6.duckdb"),
     os.path.join(DATA_DIR, "testout4.duckdb"),
 ]
 DUCK_PATH = next((p for p in CANDIDATES if p and os.path.exists(p)), os.path.join(DATA_DIR, "testout4.duckdb"))
