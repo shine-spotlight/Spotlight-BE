@@ -21,13 +21,16 @@ class SpaceSerializer(serializers.ModelSerializer):
         child=serializers.ImageField(), write_only=True, required=False
     )
     # 여러 장 URL 배열 (출력)
+    # 여러 장 URL 배열 (출력)
     place_image_url = serializers.ListField(
-        child=serializers.CharField(), read_only=True
+    child=serializers.URLField(max_length=1000),  # ✅ CharField → URLField, 길이 넉넉히
+    read_only=True
     )
+
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
-    categories_display = serializers.SerializerMethodField(read_only=True, max_length=1024)
+    categories_display = serializers.SerializerMethodField(read_only=True)
 
     # 장비 입력/출력
     equipments = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
