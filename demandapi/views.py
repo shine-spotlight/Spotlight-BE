@@ -217,8 +217,16 @@ class DemandViewSet(viewsets.ViewSet):
                 ]
 
                 items = []
-                for sql, params in candidates:
+                for idx, (sql, params) in enumerate(candidates):
                     rows = con.execute(sql, params).fetchall()
+                    forecast_vals = [r[1] for r in rows]
+                    valid_forecast = [v for v in forecast_vals if v is not None]
+                    print(f"\n[forecast DEBUG] candidate #{idx+1}")
+                    print("SQL:", sql.strip().replace("\n", " "))
+                    print("params:", params)
+                    print("rows count:", len(rows))
+                    print("forecast values:", forecast_vals)
+                    print("valid forecast values:", valid_forecast)
                     items = _select_closest_to_mean(rows)
                     if items:
                         break
