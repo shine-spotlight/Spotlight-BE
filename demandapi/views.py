@@ -1,3 +1,4 @@
+# demandapi/views.py
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework import viewsets
@@ -63,48 +64,144 @@ class DemandViewSet(viewsets.ViewSet):
     def forecast(self, request):
         raw_region = request.query_params.get("region", "서울")
         raw_genre = request.query_params.get("genre", "뮤지컬")
-        as_of = request.query_params.get("as_of", "2025-08-01")
+        raw_age = request.query_params.get("age_group")
+        raw_gender = request.query_params.get("gender")
+        as_of = "2025-09-01"  # 고정값으로 변경
+
+        # age_group 파싱
+        try:
+            age_group = int(raw_age) if raw_age is not None else -1
+        except:
+            age_group = -1
+
+        # gender 파싱
+        try:
+            gender = int(raw_gender) if raw_gender is not None else -1
+        except:
+            gender = -1
+
+        region = raw_region.lower()
+        genre = raw_genre.lower()
 
         try:
             with get_duck_conn() as con:
-                sql = """
-                    SELECT month, forecast, yhat_lower, yhat_upper
-                    FROM analytics.demand_forecast_asof
-                    WHERE as_of_month = CAST(? AS DATE)
-                      AND LOWER(region) = '(all)'
-                      AND LOWER(genre)  = '(all)'
-                    LIMIT 1
-                """
-                rows = con.execute(sql, [as_of]).fetchall()
-                if rows:
-                    items = [{
-                        "month": str(rows[0][0])[:10],
-                        "forecast": rows[0][1],
-                        "yhat_lower": rows[0][2],
-                        "yhat_upper": rows[0][3],
-                    }]
-                else:
-                    # ✅ fallback dummy
-                    items = [{
-                        "month": as_of,
-                        "forecast": 1000,
-                        "yhat_lower": 800,
-                        "yhat_upper": 1200,
-                    }]
-        except Exception:
-            # ✅ 에러시 dummy
-            items = [{
-                "month": as_of,
-                "forecast": 999,
-                "yhat_lower": 777,
-                "yhat_upper": 1111,
-            }]
+                # 후보 쿼리 계층적으로 실행 (평균치 사용)
+                candidates = [
+                    # region+genre+age+gender (유효한 값일 때만)
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                          AND age_group = ?
+                          AND gender = ?
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of, region, genre, age_group, gender]) if age_group != -1 and gender != -1 else None,
+
+                    # region+genre+age (age만 유효할 때)
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                          AND age_group = ?
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of, region, genre, age_group]) if age_group != -1 else None,
+
+                    # region+genre+gender (gender만 유효할 때)
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                          AND gender = ?
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of, region, genre, gender]) if gender != -1 else None,
+
+                    # region+genre
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = ?
+                          AND LOWER(genre)  = ?
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of, region, genre]),
+
+                    # (ALL, genre)
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = ?
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of, genre]),
+
+                    # (ALL, ALL)
+                    ("""
+                        SELECT month,
+                               AVG(forecast) AS forecast,
+                               AVG(yhat_lower) AS yhat_lower,
+                               AVG(yhat_upper) AS yhat_upper
+                        FROM analytics.demand_forecast_asof
+                        WHERE as_of_month = CAST(? AS DATE)
+                          AND LOWER(region) = '(all)'
+                          AND LOWER(genre)  = '(all)'
+                        GROUP BY month
+                        ORDER BY month
+                    """, [as_of]),
+                ]
+
+                # None 값 제거
+                candidates = [c for c in candidates if c is not None]
+
+                items = []
+                for sql, params in candidates:
+                    rows = con.execute(sql, params).fetchall()
+                    if rows:
+                        items = [{
+                            "month": str(r[0])[:10],
+                            "forecast": r[1],
+                            "yhat_lower": r[2],
+                            "yhat_upper": r[3],
+                        } for r in rows]
+                        break
+
+        except Exception as e:
+            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+
+        if not items:
+            return bad_request("해당 조합의 예측 결과가 없습니다.", "filters")
 
         return Response({
             "region": raw_region,
             "genre": raw_genre,
-            "age_group": -1,
-            "gender": "전체",
+            "age_group": age_group,
+            "gender": self._gender_label(gender),
             "as_of": as_of,
             "items": items
         })
@@ -125,11 +222,19 @@ class DemandViewSet(viewsets.ViewSet):
                 sql = """
                     SELECT AVG(yhat_upper - yhat_lower) AS shortage_index
                     FROM analytics.demand_forecast_asof
+                    WHERE as_of_month = CAST(? AS DATE)
+                      AND LOWER(region) = ?
+                      AND LOWER(genre)  = ?
                 """
-                rec = con.execute(sql).fetchone()
-                shortage_index = rec[0] if rec and rec[0] else 12345
-        except Exception:
-            shortage_index = 54321
+                rec = con.execute(sql, [as_of, raw_region.lower(), raw_genre.lower()]).fetchone()
+                if not rec or rec[0] is None:
+                    rec = con.execute(sql, [as_of, "(all)", "(all)"]).fetchone()
+            shortage_index = rec[0] if rec and rec[0] else None
+        except Exception as e:
+            return bad_request(f"DuckDB 조회 중 오류: {e}", "duckdb")
+
+        if shortage_index is None:
+            return bad_request("해당 조건의 shortage_index가 없습니다.", "region/genre/as_of")
 
         return Response({
             "region": raw_region,
