@@ -21,7 +21,9 @@ class SpaceSerializer(serializers.ModelSerializer):
         child=serializers.ImageField(), write_only=True, required=False
     )
     # 여러 장 URL 배열 (출력)
-    place_image_url = serializers.ListField(read_only=True, source="place_image")
+    place_image_url = serializers.ListField(
+        child=serializers.CharField(), read_only=True
+    )
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)

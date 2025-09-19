@@ -42,6 +42,29 @@ class Space(models.Model):
             raise ValueError("선택한 유저는 공간 보유자 계정이 아닙니다.")
         self.place_region = self.extract_region_from_address(self.address)
         super().save(*args, **kwargs)
+        # ✅ 저장 후 place_image_url 자동 업데이트
+        self.update_place_image_urls()
+
+    def update_place_image_urls(self):
+        """
+        place_image(JSONField)에 들어있는 경로/URL을 기반으로
+        place_image_url(JSONField)을 자동 세팅
+        """
+        url_list = []
+        for path in self.place_image or []:
+            if not path:
+                continue
+            url = path
+            if not url.startswith("http"):
+                if hasattr(settings, "SITE_DOMAIN"):
+                    url = settings.SITE_DOMAIN.rstrip("/") + settings.MEDIA_URL + path
+                else:
+                    url = settings.MEDIA_URL + path
+            url_list.append(url)
+
+        # 중복 제거
+        self.place_image_url = list(dict.fromkeys(url_list))
+        super().save(update_fields=["place_image_url"])
 
     @staticmethod
     def extract_region_from_address(address: str) -> str:
