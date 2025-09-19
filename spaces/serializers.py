@@ -16,15 +16,14 @@ def _norm_name(name: str) -> str:
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 여러 장 이미지 업로드 (입력)
+    # 여러 장 이미지 업로드 (입력, 파일 경로만 저장)
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
-    # 여러 장 URL 배열 (출력)
-    # 여러 장 URL 배열 (출력)
+    # 여러 장 URL 배열 (출력, 절대 URL만 저장)
     place_image_url = serializers.ListField(
-    child=serializers.URLField(max_length=1000),  # ✅ CharField → URLField, 길이 넉넉히
-    read_only=True
+        child=serializers.URLField(max_length=1000),  # DB는 JSONField, 길이 넉넉히
+        read_only=True
     )
 
 
@@ -69,17 +68,16 @@ class SpaceSerializer(serializers.ModelSerializer):
         images = validated_data.pop("place_image", [])
         space = super().create(validated_data)
 
-        urls = list(space.place_image) if space.place_image else []
+        # 업로드 파일 경로만 저장
+        file_paths = []
         for img in images:
             filename = default_storage.save(os.path.join("spaces/place", img.name), img)
-            url = default_storage.url(filename)
-            if request is not None:
-                url = request.build_absolute_uri(url)
-            if url not in urls:
-                urls.append(url)
-
-        space.place_image = list(dict.fromkeys(urls))  # 중복 제거
+            file_paths.append(filename)
+        space.place_image = file_paths
         space.save(update_fields=["place_image"])
+
+        # 절대 URL 변환 및 저장 (DB는 JSONField)
+        space.update_place_image_urls()
         return space
 
     def update(self, instance, validated_data):
@@ -88,16 +86,13 @@ class SpaceSerializer(serializers.ModelSerializer):
         space = super().update(instance, validated_data)
 
         if images is not None:
-            urls = list(space.place_image) if space.place_image else []
+            file_paths = []
             for img in images:
                 filename = default_storage.save(os.path.join("spaces/place", img.name), img)
-                url = default_storage.url(filename)
-                if request is not None:
-                    url = request.build_absolute_uri(url)
-                if url not in urls:
-                    urls.append(url)
-            space.place_image = list(dict.fromkeys(urls))  # 중복 제거
+                file_paths.append(filename)
+            space.place_image = file_paths
             space.save(update_fields=["place_image"])
+            space.update_place_image_urls()
 
         return space
 
