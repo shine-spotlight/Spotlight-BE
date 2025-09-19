@@ -14,7 +14,7 @@ from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
 import json
-import ast
+
 
 def bad_request(detail: str, field: str):
     return Response(
@@ -22,11 +22,13 @@ def bad_request(detail: str, field: str):
         status=400
     )
 
+
 def forbidden(detail: str, field: str = "posting_pk"):
     return Response(
         {"detail": detail, "code": "permission_denied", "field": field},
         status=403
     )
+
 
 def _norm_to_list_for_filter(value):
     """문자열/리스트/None → list[str]로 변환 (필터링용)"""
@@ -51,6 +53,7 @@ def _norm_to_list_for_filter(value):
         return [s]
     return []
 
+
 class PostingViewSet(viewsets.ModelViewSet):
     queryset = Posting.objects.all().order_by("-created_at")
     serializer_class = PostingSerializer
@@ -70,7 +73,7 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         return None
 
-    # 공연 공고 생성 (POST임)
+    # 공연 공고 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
         operation_description="""
@@ -110,7 +113,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         data.pop("space_id", None)
 
         ser = self.get_serializer(data=data)
-        ser.is_valid(raise_exception=True)  # 오류 발생 시 저장되지 않음
+        ser.is_valid(raise_exception=True)
 
         posting = ser.save(space=space)
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
@@ -118,12 +121,7 @@ class PostingViewSet(viewsets.ModelViewSet):
     # 공연 공고 수정 (PUT)
     @swagger_auto_schema(
         operation_summary="공연 공고 수정",
-        operation_description="""
-기존 공연 공고의 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)
-
-**수정 가능한 필드:**  
-- space_id, title, description, categories, price_type, price_amount, date, posting_image
-""",
+        operation_description="공연 공고 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)",
         request_body=PostingSerializer,
         responses={200: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -134,16 +132,11 @@ class PostingViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        return Response(serializer.data)  # 반드시 Response로 감싸서 반환
+        return Response(serializer.data)
 
     # 공연 공고 삭제 (DELETE)
     @swagger_auto_schema(
         operation_summary="공연 공고 삭제",
-        operation_description="""
-특정 공연 공고를 삭제합니다. (공간 소유자 또는 관리자만 가능)
-
-**주의:** 삭제된 데이터는 복구할 수 없습니다.
-""",
         responses={204: "삭제 성공", 403: "권한 없음"},
         tags=["Posting"]
     )
@@ -152,24 +145,14 @@ class PostingViewSet(viewsets.ModelViewSet):
         guard = self._guard_space_owner(request, posting)
         if guard:
             return guard
-
         posting.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # 공연 공고 전체 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
-        operation_description="""
-등록된 모든 공연 공고를 필터 조건(category, price_type, date_from, date_to, place_region)로 조회합니다.
-
-- category: 카테고리 PK
-- price_type: "paid" | "free" | "negotiable"
-- date_from: 공연 시작일(YYYY-MM-DD)
-- date_to: 공연 종료일(YYYY-MM-DD)
-- place_region: 공간 지역명 (Space.place_region, 완전일치)
-""",
         manual_parameters=[
-            openapi.Parameter('category', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description='카테고리 PK', required=False),
+            openapi.Parameter('categories', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='카테고리 이름 배열 (쉼표구분)', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
@@ -180,19 +163,12 @@ class PostingViewSet(viewsets.ModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         qs = self.queryset
-        category = request.query_params.get("category")
         categories = request.query_params.get("categories")
         price_type = request.query_params.get("price_type")
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
         place_region = request.query_params.get("place_region")
-        region = request.query_params.get("region")
 
-        # 기존 단일 category(PK) 필터
-        # if category:
-        #     qs = qs.filter(categories__id=category)
-
-        # categories(이름 배열) 필터
         if categories:
             categories_list = _norm_to_list_for_filter(categories)
             if categories_list:
@@ -205,37 +181,20 @@ class PostingViewSet(viewsets.ModelViewSet):
         if date_to:
             qs = qs.filter(date__lte=date_to)
 
-        # place_region (JSONField/CharField) 필터
         if place_region:
             place_region_list = _norm_to_list_for_filter(place_region)
             if place_region_list:
-                # JSONField라면 contains, CharField라면 in/equals
                 qs = qs.filter(space__place_region__contains=place_region_list)
-        # region (공연공고에 직접 region 필드가 있다면)
-        if region:
-            region_list = _norm_to_list_for_filter(region)
-            if region_list:
-                qs = qs.filter(region__contains=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
         if page is not None:
             return self.get_paginated_response(ser.data)
         return Response(ser.data, status=200)
-    
+
     # 공연 공고 상세 조회 (GET)
     @swagger_auto_schema(
         operation_summary="공연 공고 상세 조회",
-        operation_description="""
-특정 공연 공고의 상세 정보를 조회합니다.
-
-**포함 정보:**
-- space: 공간명
-- space_address: 공간 주소
-- categories: 카테고리 PK 배열
-- category_names: 카테고리명 배열
-- 기타 공고 정보
-""",
         responses={200: PostingSerializer, 404: "존재하지 않음"},
         tags=["Posting"]
     )
@@ -247,46 +206,11 @@ class PostingViewSet(viewsets.ModelViewSet):
     # 제안 전송 (POST)
     @swagger_auto_schema(
         operation_summary="공고 기반 제안 전송",
-        operation_description="""
-아티스트가 특정 공연 공고에 대해 공간에 제안을 보냅니다.
-
-- 이 API는 **아티스트만** 사용할 수 있습니다.
-- 요청 URL의 {id}는 제안하려는 공연 공고의 id입니다.
-- 요청 body에는 **message**만 입력하면 됩니다.
-- 아티스트 정보는 토큰(로그인)에서 자동으로 추출됩니다.
-- 공간 정보는 해당 공고의 space로 자동 연결됩니다.
-
-**예시 요청**
-```json
-POST /api/v1/postings/1/suggestion/
-{
-  "message": "이 공연에 참여하고 싶어요!"
-}
-```
-""",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지 (필수)")
-            },
+            properties={'message': openapi.Schema(type=openapi.TYPE_STRING, description="제안 메시지 (필수)")},
             required=['message']
         ),
-        responses={
-            201: openapi.Response(
-                description="제안 생성 결과",
-                examples={"application/json": {
-                    "id": 1,
-                    "artist": 2,
-                    "space": 3,
-                    "posting": 1,
-                    "message": "이 공연에 참여하고 싶어요!",
-                    "is_accepted": False,
-                    "is_read": False,
-                    "created_at": "2025-09-14T12:34:56Z"
-                }}
-            ),
-            400: "유효성 오류"
-        },
         tags=["Posting"]
     )
     @action(detail=True, methods=["post"], url_path="suggestion", permission_classes=[IsAuthenticated])
@@ -294,7 +218,6 @@ POST /api/v1/postings/1/suggestion/
         posting = self.get_object()
         user = request.user
 
-        # 1번: 아티스트만 접근 가능하게 role 체크
         if not hasattr(user, "role") or user.role != "artist":
             return forbidden("아티스트만 제안을 보낼 수 있습니다.", "role")
 
@@ -314,13 +237,11 @@ POST /api/v1/postings/1/suggestion/
             posting=posting,
             message=message
         )
-
         return Response(SuggestionSerializer(suggestion).data, status=201)
-    
+
     # 공연 공고 부분 수정 (PATCH)
     @swagger_auto_schema(
         operation_summary="공연 공고 부분 수정",
-        operation_description="PATCH: 일부 필드만 수정합니다.",
         request_body=PostingSerializer,
         responses={200: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
