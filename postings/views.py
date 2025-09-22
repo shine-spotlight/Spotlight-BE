@@ -173,6 +173,10 @@ class PostingViewSet(viewsets.ModelViewSet):
         place_region = request.query_params.get("place_region")
         region = request.query_params.get("region")
 
+        # ✅ region → place_region 흡수
+        if not place_region and region:
+            place_region = region
+
         # categories
         if categories and categories.strip():
             categories_list = _norm_to_list_for_filter(categories)
@@ -186,17 +190,11 @@ class PostingViewSet(viewsets.ModelViewSet):
         if date_to and date_to.strip():
             qs = qs.filter(date__lte=date_to)
 
-        # place_region
+        # place_region (region alias 포함)
         if place_region and place_region.strip():
             place_region_list = _norm_to_list_for_filter(place_region)
             if place_region_list:
                 qs = qs.filter(space__place_region__in=place_region_list)
-
-        # region (alias for place_region)
-        if region and region.strip():
-            region_list = _norm_to_list_for_filter(region)
-            if region_list:
-                qs = qs.filter(space__place_region__in=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
