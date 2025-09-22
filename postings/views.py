@@ -14,7 +14,6 @@ from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
 from points.models import PointTransaction
-import json
 import ast
 
 
@@ -159,7 +158,7 @@ class PostingViewSet(viewsets.ModelViewSet):
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
             openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
-            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공연 지역명', required=False),
+            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공연 지역명 (place_region과 동일)', required=False),
         ],
         responses={200: PostingSerializer(many=True)},
         tags=["Posting"]
@@ -193,11 +192,11 @@ class PostingViewSet(viewsets.ModelViewSet):
             if place_region_list:
                 qs = qs.filter(space__place_region__in=place_region_list)
 
-        # region
+        # region (alias for place_region)
         if region and region.strip():
             region_list = _norm_to_list_for_filter(region)
             if region_list:
-                qs = qs.filter(region__in=region_list)
+                qs = qs.filter(space__place_region__in=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
@@ -243,7 +242,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         if not message:
             return Response({"detail": "message는 필수입니다."}, status=400)
 
-        # ✅ 포인트 잔액 계산 (예시 로직과 동일한 변수명/방식)
+        # ✅ 포인트 잔액 계산
         cost = 1000  # 제안 1회당 차감 포인트
         qs = PointTransaction.objects.filter(user=user).order_by("-created_at")
         balance = sum([tx.amount if tx.transaction_type == "charge" else -tx.amount for tx in qs])
@@ -260,8 +259,6 @@ class PostingViewSet(viewsets.ModelViewSet):
                 posting=posting,
                 message=message
             )
-
-            # ✅ transaction_type='deduct'로 양수 amount를 기록 (예시와 동일)
             PointTransaction.objects.create(
                 user=user,
                 amount=cost,

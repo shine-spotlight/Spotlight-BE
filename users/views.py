@@ -340,3 +340,53 @@ class UserViewSet(viewsets.ModelViewSet):
                 "is_spaceonboarding": is_spaceonboarding,
             }
         )
+        # ✅ 회원 탈퇴
+    @swagger_auto_schema(
+        operation_summary="회원 탈퇴",
+        operation_description="""
+현재 로그인한 사용자의 계정을 탈퇴 처리합니다.  
+- 관련 포인트, 제안서, 공고, 좋아요, 알림, 프로필(Artist/Space) 모두 삭제  
+- kakao_id를 None으로 비워 동일 카카오 계정으로 재가입 가능  
+        """,
+        responses={204: "탈퇴 성공", 403: "권한 없음"},
+        tags=["User"],
+    )
+    @action(detail=False, methods=["delete"], url_path="withdraw", permission_classes=[IsAuthenticated])
+    def withdraw(self, request):
+        user = request.user
+
+        # 관련 데이터 삭제
+        from points.models import PointTransaction
+        from suggestions.models import Suggestion
+        from postings.models import Posting
+        from likes.models import Like
+        from notifications.models import Notification
+        from artists.models import Artist
+        from spaces.models import Space
+
+        # 포인트
+        PointTransaction.objects.filter(user=user).delete()
+        # 제안서 (아티스트/공간 양쪽)
+        Suggestion.objects.filter(artist__user=user).delete()
+        Suggestion.objects.filter(space__user=user).delete()
+        # 공고
+        Posting.objects.filter(space__user=user).delete()
+        # 좋아요
+        Like.objects.filter(user=user).delete()
+        # 알림
+        Notification.objects.filter(user=user).delete()
+        # 프로필
+        Artist.objects.filter(user=user).delete()
+        Space.objects.filter(user=user).delete()
+
+        # 카카오 아이디 초기화 (재가입 가능하게)
+        user.kakao_id = None
+        user.role = None
+        user.save()
+
+        # 인증 토큰 삭제 (로그아웃 효과)
+        from rest_framework.authtoken.models import Token
+        Token.objects.filter(user=user).delete()
+
+        return Response({"detail": "회원 탈퇴가 완료되었습니다."}, status=status.HTTP_204_NO_CONTENT)
+
