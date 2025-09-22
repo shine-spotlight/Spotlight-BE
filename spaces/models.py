@@ -37,9 +37,14 @@ class Space(models.Model):
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
 
-    # 이미지
-    place_image = models.JSONField(default=list, blank=True)       # 업로드/저장용 (경로 or Cloudinary key)
-    place_image_url = models.JSONField(default=list, blank=True)   # API 응답용 (절대 URL)
+    # ✅ 이미지 (대표 이미지는 place_image_url[0] 사용)
+    # 여러 장 저장 (경로 또는 Cloudinary public_id)
+    place_image = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 또는 URL 목록")
+    place_image_url = models.JSONField(default=list, blank=True)
+
+    @property
+    def main_image_url(self):
+        return self.place_image_url[0] if self.place_image_url else None
 
     equipments = models.ManyToManyField(
         EquipmentCategory,
@@ -65,23 +70,34 @@ class Space(models.Model):
         """
         place_image(JSONField)에 들어있는 경로/URL을 기반으로
         place_image_url(JSONField)을 자동 세팅
+        - http/https로 시작하면 그대로 사용
+        - 그 외는 Cloudinary public_id로 간주하여 URL 생성
+          (settings.CLOUDINARY_CLOUD_NAME가 없으면 MEDIA_URL 기반으로 보정)
         """
+        cloud_name = getattr(settings, "CLOUDINARY_CLOUD_NAME", None)
+        site = getattr(settings, "SITE_DOMAIN", "").rstrip("/")
+        media_url = getattr(settings, "MEDIA_URL", "/media/")
+        if not media_url.startswith("/"):
+            media_url = "/" + media_url
+        if not media_url.endswith("/"):
+            media_url += "/"
+
         url_list = []
-        for path in self.place_image or []:
+        for path in (self.place_image or []):
             if not path:
                 continue
+            s = str(path).strip()
+            if not s:
+                continue
 
-            url = str(path)
-            # Cloudinary가 아닌 경우 → /media/ 기반으로 URL 보정
-            if not url.startswith("http"):
-                if hasattr(settings, "SITE_DOMAIN"):
-                    url = settings.SITE_DOMAIN.rstrip("/") + settings.MEDIA_URL + url
-                else:
-                    url = settings.MEDIA_URL + url
+            if s.startswith(("http://", "https://")):
+                url_list.append(s)
+            elif cloud_name:
+                url_list.append(f"https://res.cloudinary.com/{cloud_name}/image/upload/{s}")
+            else:
+                s = s.lstrip("/")
+                url_list.append(f"{site}{media_url}{s}" if site else f"{media_url}{s}")
 
-            url_list.append(url)
-
-        # 중복 제거 후 저장
         self.place_image_url = list(dict.fromkeys(url_list))
         super().save(update_fields=["place_image_url"])
 

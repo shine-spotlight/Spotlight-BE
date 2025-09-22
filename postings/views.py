@@ -173,28 +173,29 @@ class PostingViewSet(viewsets.ModelViewSet):
         place_region = request.query_params.get("place_region")
         region = request.query_params.get("region")
 
-        # ✅ region → place_region 흡수
+        # ✅ region → place_region alias 처리
         if not place_region and region:
             place_region = region
 
-        # categories
+        # 카테고리 필터
         if categories and categories.strip():
             categories_list = _norm_to_list_for_filter(categories)
             if categories_list:
                 qs = qs.filter(categories__name__in=categories_list)
 
+        # 가격 타입 필터
         if price_type and price_type.strip():
             qs = qs.filter(price_type=price_type)
+
+        # 날짜 필터
         if date_from and date_from.strip():
             qs = qs.filter(date__gte=date_from)
         if date_to and date_to.strip():
             qs = qs.filter(date__lte=date_to)
 
-        # place_region (region alias 포함)
+        # ✅ 공간 지역 필터 (icontains로 부분검색)
         if place_region and place_region.strip():
-            place_region_list = _norm_to_list_for_filter(place_region)
-            if place_region_list:
-                qs = qs.filter(space__place_region__in=place_region_list)
+            qs = qs.filter(space__place_region__icontains=place_region)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
