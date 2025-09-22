@@ -31,7 +31,7 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    kakao_id = models.CharField(max_length=255, unique=True)  # 카카오 로그인 ID
+    kakao_id = models.CharField(max_length=255, unique=True, null=True, blank=True)  # 카카오 로그인 ID
     username = models.CharField(max_length=150, unique=True, null=True, blank=True)  # ✅ Django 호환용 username
 
     role = models.CharField(
