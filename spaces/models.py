@@ -41,16 +41,8 @@ class Space(models.Model):
     # ✅ Cloudinary 업로드 (프론트 필드명: place_image 고정)
     # 여러 장 업로드를 지원하기 위해 ImageField 자체는 단일이지만, 다중 업로드를 받으면
     # view/serializer에서 반복 저장 → JSONField에 누적 기록
-    place_image = models.ImageField(
-        upload_to="spaces/place/",
-        storage=MediaCloudinaryStorage(),
-        blank=True,
-        null=True,
-        max_length=10000
-    )
 
-    # 저장된 경로(public_id)와 URL 목록
-    place_image_list = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 목록")
+    place_image = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 목록")
     place_image_url = models.JSONField(default=list, blank=True, help_text="Cloudinary URL 목록")
 
     @property

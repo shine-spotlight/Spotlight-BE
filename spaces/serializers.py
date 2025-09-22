@@ -5,7 +5,6 @@ from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 from cloudinary_storage.storage import MediaCloudinaryStorage
-import os
 
 storage = MediaCloudinaryStorage()
 
@@ -16,11 +15,11 @@ def _norm_name(name: str) -> str:
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 여러 장 이미지 업로드 (입력: 파일)
+    # 입력: 여러 장 업로드
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
-    # 여러 장 URL 배열 (출력: 절대 URL)
+    # 출력: URL 배열
     place_image_url = serializers.ListField(
         child=serializers.URLField(max_length=1000),
         read_only=True
@@ -66,19 +65,17 @@ class SpaceSerializer(serializers.ModelSerializer):
         images = validated_data.pop("place_image", [])
         space = super().create(validated_data)
 
-        file_paths = []
+        file_keys, file_urls = [], []
         if not isinstance(images, (list, tuple)):
             images = [images]
         for img in images:
-            if hasattr(img, "name"):  # 파일 객체
-                filename = storage.save(f"spaces/place/{img.name}", img)
-                file_paths.append(filename)
-            else:  # 문자열 (이미 저장된 경로)
-                file_paths.append(str(img))
+            filename = storage.save(f"spaces/place/{img.name}", img)  # Cloudinary 저장
+            file_keys.append(filename)
+            file_urls.append(storage.url(filename))
 
-        space.place_image = file_paths
-        space.save(update_fields=["place_image"])
-        space.update_place_image_urls()
+        space.place_image_list = file_keys
+        space.place_image_url = file_urls
+        space.save(update_fields=["place_image_list", "place_image_url"])
         return space
 
     def update(self, instance, validated_data):
@@ -86,18 +83,16 @@ class SpaceSerializer(serializers.ModelSerializer):
         space = super().update(instance, validated_data)
 
         if images is not None:
-            file_paths = []
+            file_keys, file_urls = [], []
             if not isinstance(images, (list, tuple)):
                 images = [images]
             for img in images:
-                if hasattr(img, "name"):  # 새 업로드된 파일
-                    filename = storage.save(f"spaces/place/{img.name}", img)
-                    file_paths.append(filename)
-                else:  # 이미 저장된 문자열 key/url
-                    file_paths.append(str(img))
-            space.place_image = file_paths
-            space.save(update_fields=["place_image"])
-            space.update_place_image_urls()
+                filename = storage.save(f"spaces/place/{img.name}", img)
+                file_keys.append(filename)
+                file_urls.append(storage.url(filename))
+            space.place_image_list = file_keys
+            space.place_image_url = file_urls
+            space.save(update_fields=["place_image_list", "place_image_url"])
 
         return space
 
