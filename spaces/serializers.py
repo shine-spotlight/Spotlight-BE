@@ -5,6 +5,8 @@ from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 from cloudinary_storage.storage import MediaCloudinaryStorage
+import json
+import ast
 
 storage = MediaCloudinaryStorage()
 
@@ -15,7 +17,7 @@ def _norm_name(name: str) -> str:
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 입력: 여러 장 업로드
+    # 이미지 입력: 단일/다중 모두 허용
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
@@ -57,6 +59,15 @@ class SpaceSerializer(serializers.ModelSerializer):
             "phone_number", "categories_display", "place_image_url",
             "place_region", "is_liked"
         ]
+
+    def to_internal_value(self, data):
+        """
+        FormData에서 단일 파일/다중 파일 둘 다 리스트로 강제 변환
+        """
+        if isinstance(data, dict) and "place_image" in data:
+            images = data.getlist("place_image") if hasattr(data, "getlist") else [data["place_image"]]
+            data["place_image"] = images
+        return super().to_internal_value(data)
 
     # ----------------------------
     # 이미지 처리
@@ -123,12 +134,23 @@ class SpaceSerializer(serializers.ModelSerializer):
     # 밸리데이션 (배열 강제)
     # ----------------------------
     def validate_list_field(self, value, field_name):
-        """배열 필드를 무조건 list로 변환"""
+        """FormData로 들어온 문자열 배열 처리"""
         if value is None:
             return []
         if isinstance(value, str):
-            value = value.strip()
-            return [value] if value else []
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(x).strip() for x in parsed]
+            except Exception:
+                pass
+            try:
+                parsed = ast.literal_eval(value)
+                if isinstance(parsed, list):
+                    return [str(x).strip() for x in parsed]
+            except Exception:
+                pass
+            return [value.strip()]
         if isinstance(value, (list, tuple)):
             return [str(x).strip() for x in value if str(x).strip()]
         raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})
