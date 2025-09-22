@@ -13,6 +13,7 @@ from suggestions.models import Suggestion
 from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
+from points.models import PointTransaction
 import json
 import ast
 
@@ -242,13 +243,31 @@ class PostingViewSet(viewsets.ModelViewSet):
         if not message:
             return Response({"detail": "message는 필수입니다."}, status=400)
 
-        suggestion = Suggestion.objects.create(
-            sender_type=Suggestion.SENDER_ARTIST,
-            artist=my_artist,
-            space=posting.space,
-            posting=posting,
-            message=message
-        )
+        # ✅ 포인트 잔액 계산 (예시 로직과 동일한 변수명/방식)
+        cost = 1000  # 제안 1회당 차감 포인트
+        qs = PointTransaction.objects.filter(user=user).order_by("-created_at")
+        balance = sum([tx.amount if tx.transaction_type == "charge" else -tx.amount for tx in qs])
+
+        if balance < cost:
+            return bad_request("잔액 부족으로 제안을 보낼 수 없습니다.", "balance")
+
+        # 제안 생성 + 포인트 차감 트랜잭션
+        with transaction.atomic():
+            suggestion = Suggestion.objects.create(
+                sender_type=Suggestion.SENDER_ARTIST,
+                artist=my_artist,
+                space=posting.space,
+                posting=posting,
+                message=message
+            )
+
+            # ✅ transaction_type='deduct'로 양수 amount를 기록 (예시와 동일)
+            PointTransaction.objects.create(
+                user=user,
+                amount=cost,
+                transaction_type="deduct"
+            )
+
         return Response(SuggestionSerializer(suggestion).data, status=201)
 
     # 공연 공고 부분 수정 (PATCH)

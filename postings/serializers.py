@@ -83,11 +83,30 @@ class PostingSerializer(serializers.ModelSerializer):
     def get_category_names(self, obj):
         return [c.name for c in obj.categories.all()]
 
-    # ✅ 업로드된 이미지 주소 반환
+    # ✅ 업로드된 이미지 주소 반환 (절대 URL)
     def get_posting_image_url(self, obj):
-        if obj.posting_image:
-            return f"{settings.MEDIA_URL}{obj.posting_image}"
-        return None
+        if not obj.posting_image:
+            return None
+        try:
+            url = obj.posting_image.url  # Cloudinary/Spaces는 절대 URL 제공
+        except Exception:
+            return None
+
+        # 절대 URL이면 그대로 반환
+        if isinstance(url, str) and (url.startswith("http://") or url.startswith("https://")):
+            return url
+
+        # 상대 경로면 SITE_DOMAIN 또는 request로 절대 URL 구성
+        site = getattr(settings, "SITE_DOMAIN", "").rstrip("/")
+        if site:
+            path = url if str(url).startswith("/") else f"/{url}"
+            return f"{site}{path}"
+
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(url)
+
+        return url
 
     def validate(self, attrs):
         # 가격 규칙
