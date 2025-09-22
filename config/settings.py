@@ -6,6 +6,9 @@ from pathlib import Path
 import dj_database_url
 import os
 import environ
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,6 +57,9 @@ INSTALLED_APPS = [
     "demandapi",
     "points",
     "adminapi",
+    #사진저장
+    "cloudinary",
+    "cloudinary_storage",
 ]
 
 MIDDLEWARE = [
@@ -156,3 +162,13 @@ SWAGGER_SETTINGS = {
     # 필요 시 기본 보안 적용
     "DEFAULT_INFO": "config.urls.schema_info",
 }
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", "dompnei8f"),
+    api_key=os.getenv("CLOUDINARY_API_KEY", "888842165311445"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET", "<your_api_secret>"),
+    secure=True,
+)
+
+# Django 기본 저장소를 Cloudinary로 교체
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"

@@ -14,6 +14,7 @@ from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
 import json
+import ast
 
 
 def bad_request(detail: str, field: str):
@@ -30,28 +31,32 @@ def forbidden(detail: str, field: str = "posting_pk"):
     )
 
 
+# 문자열/리스트 입력을 필터용 리스트로 정규화
 def _norm_to_list_for_filter(value):
-    """문자열/리스트/None → list[str]로 변환 (필터링용)"""
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
-        return [str(x).strip() for x in value if str(x).strip()]
-    if isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return []
-        # JSON 배열 문자열 처리
+        items = list(value)
+    else:
+        s = str(value).strip()
         try:
-            parsed = json.loads(s)
+            parsed = ast.literal_eval(s)
             if isinstance(parsed, (list, tuple)):
-                return [str(x).strip() for x in parsed if str(x).strip()]
+                items = list(parsed)
+            else:
+                items = [s]
         except Exception:
-            pass
-        # 쉼표로 구분된 문자열 처리
-        if "," in s:
-            return [x.strip() for x in s.split(",") if x.strip()]
-        return [s]
-    return []
+            if "," in s:
+                items = [x for x in s.split(",")]
+            else:
+                items = [s] if s else []
+    normed, seen = [], set()
+    for x in items:
+        v = str(x).strip()
+        if v and v not in seen:
+            normed.append(v)
+            seen.add(v)
+    return normed
 
 
 class PostingViewSet(viewsets.ModelViewSet):
@@ -64,13 +69,10 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         if request.user.is_superuser:
             return None
-
         if not request.user.is_authenticated:
             return forbidden("인증 필요")
-
         if getattr(request.user, "id", None) != getattr(space.user, "id", None):
             return forbidden("본인 공간의 공고만 생성/수정/삭제할 수 있습니다.")
-
         return None
 
     # 공연 공고 생성 (POST)
@@ -114,7 +116,6 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         ser = self.get_serializer(data=data)
         ser.is_valid(raise_exception=True)
-
         posting = ser.save(space=space)
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
@@ -157,34 +158,45 @@ class PostingViewSet(viewsets.ModelViewSet):
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
             openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
+            openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공연 지역명', required=False),
         ],
         responses={200: PostingSerializer(many=True)},
         tags=["Posting"]
     )
     def list(self, request, *args, **kwargs):
-        qs = self.queryset
+        qs = self.get_queryset()
+
         categories = request.query_params.get("categories")
         price_type = request.query_params.get("price_type")
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
         place_region = request.query_params.get("place_region")
+        region = request.query_params.get("region")
 
-        if categories:
+        # categories
+        if categories and categories.strip():
             categories_list = _norm_to_list_for_filter(categories)
             if categories_list:
                 qs = qs.filter(categories__name__in=categories_list)
 
-        if price_type:
+        if price_type and price_type.strip():
             qs = qs.filter(price_type=price_type)
-        if date_from:
+        if date_from and date_from.strip():
             qs = qs.filter(date__gte=date_from)
-        if date_to:
+        if date_to and date_to.strip():
             qs = qs.filter(date__lte=date_to)
 
-        if place_region:
+        # place_region
+        if place_region and place_region.strip():
             place_region_list = _norm_to_list_for_filter(place_region)
             if place_region_list:
-                qs = qs.filter(space__place_region__contains=place_region_list)
+                qs = qs.filter(space__place_region__in=place_region_list)
+
+        # region
+        if region and region.strip():
+            region_list = _norm_to_list_for_filter(region)
+            if region_list:
+                qs = qs.filter(region__in=region_list)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
@@ -253,7 +265,6 @@ class PostingViewSet(viewsets.ModelViewSet):
             return guard
 
         serializer = self.get_serializer(posting, data=request.data, partial=True)
-        if serializer.is_valid():
-            posting = serializer.save()
-            return Response(self.get_serializer(posting).data, status=200)
-        return bad_request(str(serializer.errors), "partial_update")
+        serializer.is_valid(raise_exception=True)
+        posting = serializer.save()
+        return Response(self.get_serializer(posting).data, status=200)
