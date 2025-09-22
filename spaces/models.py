@@ -4,6 +4,7 @@ from django.conf import settings
 from users.models import User
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
+from cloudinary_storage.storage import MediaCloudinaryStorage
 
 
 class SpaceCategory(models.Model):
@@ -37,10 +38,20 @@ class Space(models.Model):
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
 
-    # ✅ 이미지 (대표 이미지는 place_image_url[0] 사용)
-    # 여러 장 저장 (경로 또는 Cloudinary public_id)
-    place_image = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 또는 URL 목록")
-    place_image_url = models.JSONField(default=list, blank=True)
+    # ✅ Cloudinary 업로드 (프론트 필드명: place_image 고정)
+    # 여러 장 업로드를 지원하기 위해 ImageField 자체는 단일이지만, 다중 업로드를 받으면
+    # view/serializer에서 반복 저장 → JSONField에 누적 기록
+    place_image = models.ImageField(
+        upload_to="spaces/place/",
+        storage=MediaCloudinaryStorage(),
+        blank=True,
+        null=True,
+        max_length=10000
+    )
+
+    # 저장된 경로(public_id)와 URL 목록
+    place_image_list = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 목록")
+    place_image_url = models.JSONField(default=list, blank=True, help_text="Cloudinary URL 목록")
 
     @property
     def main_image_url(self):
@@ -63,43 +74,14 @@ class Space(models.Model):
         self.place_region = self.extract_region_from_address(self.address)
         super().save(*args, **kwargs)
 
-        # 저장 후 이미지 URL 자동 갱신
-        self.update_place_image_urls()
-
-    def update_place_image_urls(self):
-        """
-        place_image(JSONField)에 들어있는 경로/URL을 기반으로
-        place_image_url(JSONField)을 자동 세팅
-        - http/https로 시작하면 그대로 사용
-        - 그 외는 Cloudinary public_id로 간주하여 URL 생성
-          (settings.CLOUDINARY_CLOUD_NAME가 없으면 MEDIA_URL 기반으로 보정)
-        """
-        cloud_name = getattr(settings, "CLOUDINARY_CLOUD_NAME", None)
-        site = getattr(settings, "SITE_DOMAIN", "").rstrip("/")
-        media_url = getattr(settings, "MEDIA_URL", "/media/")
-        if not media_url.startswith("/"):
-            media_url = "/" + media_url
-        if not media_url.endswith("/"):
-            media_url += "/"
-
-        url_list = []
-        for path in (self.place_image or []):
-            if not path:
-                continue
-            s = str(path).strip()
-            if not s:
-                continue
-
-            if s.startswith(("http://", "https://")):
-                url_list.append(s)
-            elif cloud_name:
-                url_list.append(f"https://res.cloudinary.com/{cloud_name}/image/upload/{s}")
-            else:
-                s = s.lstrip("/")
-                url_list.append(f"{site}{media_url}{s}" if site else f"{media_url}{s}")
-
-        self.place_image_url = list(dict.fromkeys(url_list))
-        super().save(update_fields=["place_image_url"])
+        # ✅ Cloudinary 업로드 후 place_image_url 반영
+        if self.place_image and hasattr(self.place_image, "url"):
+            url = self.place_image.url
+            public_id = self.place_image.name  # Cloudinary 내부 저장 key
+            if url not in self.place_image_url:
+                self.place_image_list.append(public_id)
+                self.place_image_url.append(url)
+                super().save(update_fields=["place_image_list", "place_image_url"])
 
     @staticmethod
     def extract_region_from_address(address: str) -> str:
@@ -121,13 +103,10 @@ class Space(models.Model):
         return self.user.phone_number
 
     def clear_place_images(self):
-        """
-        모든 이미지 URL을 비우고, place_image_url도 초기화.
-        (실제 파일 삭제는 선택 사항)
-        """
-        self.place_image = []
+        """이미지 초기화"""
+        self.place_image_list = []
         self.place_image_url = []
-        self.save(update_fields=["place_image", "place_image_url"])
+        self.save(update_fields=["place_image_list", "place_image_url"])
 
     def __str__(self):
         return self.place_name

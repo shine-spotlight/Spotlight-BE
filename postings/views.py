@@ -153,11 +153,11 @@ class PostingViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_summary="공연 공고 전체 조회",
         manual_parameters=[
-            openapi.Parameter('categories', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='카테고리 이름 배열 (쉼표구분)', required=False),
+            openapi.Parameter('categories', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='카테고리 이름 (쉼표구분 가능)', required=False),
             openapi.Parameter('price_type', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='유/무료', required=False),
             openapi.Parameter('date_from', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='시작일', required=False),
             openapi.Parameter('date_to', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='종료일', required=False),
-            openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명', required=False),
+            openapi.Parameter('place_region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공간 지역명 (부분일치)', required=False),
             openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='공연 지역명 (place_region과 동일)', required=False),
         ],
         responses={200: PostingSerializer(many=True)},
@@ -173,28 +173,28 @@ class PostingViewSet(viewsets.ModelViewSet):
         place_region = request.query_params.get("place_region")
         region = request.query_params.get("region")
 
-        # ✅ region → place_region alias 처리
+        # ✅ region → place_region alias
         if not place_region and region:
             place_region = region
 
-        # 카테고리 필터
-        if categories and categories.strip():
-            categories_list = _norm_to_list_for_filter(categories)
-            if categories_list:
-                qs = qs.filter(categories__name__in=categories_list)
+        # 카테고리 필터 (쉼표 분리)
+        if categories:
+            cat_list = [c.strip() for c in categories.split(",") if c.strip()]
+            if cat_list:
+                qs = qs.filter(categories__name__in=cat_list)
 
         # 가격 타입 필터
-        if price_type and price_type.strip():
+        if price_type:
             qs = qs.filter(price_type=price_type)
 
         # 날짜 필터
-        if date_from and date_from.strip():
+        if date_from:
             qs = qs.filter(date__gte=date_from)
-        if date_to and date_to.strip():
+        if date_to:
             qs = qs.filter(date__lte=date_to)
 
-        # ✅ 공간 지역 필터 (icontains로 부분검색)
-        if place_region and place_region.strip():
+        # ✅ 공간 지역 필터 (부분일치)
+        if place_region:
             qs = qs.filter(space__place_region__icontains=place_region)
 
         page = self.paginate_queryset(qs)
