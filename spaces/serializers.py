@@ -4,11 +4,9 @@ from categories.models import Category
 from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
-from django.core.files.storage import default_storage
-import os
-import json
-import ast
 from cloudinary_storage.storage import MediaCloudinaryStorage
+import os
+
 storage = MediaCloudinaryStorage()
 
 
@@ -18,16 +16,15 @@ def _norm_name(name: str) -> str:
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 여러 장 이미지 업로드 (입력, 파일 경로만 저장)
+    # 여러 장 이미지 업로드 (입력: 파일)
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
-    # 여러 장 URL 배열 (출력, 절대 URL만 저장)
+    # 여러 장 URL 배열 (출력: 절대 URL)
     place_image_url = serializers.ListField(
-        child=serializers.URLField(max_length=1000),  # DB는 JSONField, 길이 넉넉히
+        child=serializers.URLField(max_length=1000),
         read_only=True
     )
-
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -71,10 +68,13 @@ class SpaceSerializer(serializers.ModelSerializer):
 
         file_paths = []
         if not isinstance(images, (list, tuple)):
-            images = [images]   # 단일 파일일 경우 배열로 감싸줌
+            images = [images]
         for img in images:
-            filename = storage.save(f"spaces/place/{img.name}", img)
-            file_paths.append(filename)
+            if hasattr(img, "name"):  # 파일 객체
+                filename = storage.save(f"spaces/place/{img.name}", img)
+                file_paths.append(filename)
+            else:  # 문자열 (이미 저장된 경로)
+                file_paths.append(str(img))
 
         space.place_image = file_paths
         space.save(update_fields=["place_image"])
@@ -90,8 +90,11 @@ class SpaceSerializer(serializers.ModelSerializer):
             if not isinstance(images, (list, tuple)):
                 images = [images]
             for img in images:
-                filename = storage.save(f"spaces/place/{img.name}", img)
-                file_paths.append(filename)
+                if hasattr(img, "name"):  # 새 업로드된 파일
+                    filename = storage.save(f"spaces/place/{img.name}", img)
+                    file_paths.append(filename)
+                else:  # 이미 저장된 문자열 key/url
+                    file_paths.append(str(img))
             space.place_image = file_paths
             space.save(update_fields=["place_image"])
             space.update_place_image_urls()
@@ -129,7 +132,7 @@ class SpaceSerializer(serializers.ModelSerializer):
     # 밸리데이션 (배열 강제)
     # ----------------------------
     def validate_list_field(self, value, field_name):
-        """배열 필드를 무조건 list로 변환 (단순화)"""
+        """배열 필드를 무조건 list로 변환"""
         if value is None:
             return []
         if isinstance(value, str):
