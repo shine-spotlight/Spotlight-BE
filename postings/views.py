@@ -14,7 +14,6 @@ from artists.models import Artist
 from rest_framework.permissions import IsAuthenticated
 from spaces.models import Space
 from points.models import PointTransaction
-import ast
 
 
 def bad_request(detail: str, field: str):
@@ -29,34 +28,6 @@ def forbidden(detail: str, field: str = "posting_pk"):
         {"detail": detail, "code": "permission_denied", "field": field},
         status=403
     )
-
-
-# 문자열/리스트 입력을 필터용 리스트로 정규화
-def _norm_to_list_for_filter(value):
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        items = list(value)
-    else:
-        s = str(value).strip()
-        try:
-            parsed = ast.literal_eval(s)
-            if isinstance(parsed, (list, tuple)):
-                items = list(parsed)
-            else:
-                items = [s]
-        except Exception:
-            if "," in s:
-                items = [x for x in s.split(",")]
-            else:
-                items = [s] if s else []
-    normed, seen = [], set()
-    for x in items:
-        v = str(x).strip()
-        if v and v not in seen:
-            normed.append(v)
-            seen.add(v)
-    return normed
 
 
 class PostingViewSet(viewsets.ModelViewSet):
@@ -78,24 +49,6 @@ class PostingViewSet(viewsets.ModelViewSet):
     # 공연 공고 생성 (POST)
     @swagger_auto_schema(
         operation_summary="공연 공고 생성",
-        operation_description="""
-새로운 공연 공고를 등록합니다. (공간 소유자만 가능)
-
-**중요**
-- 프론트는 space_id를 절대 body에 넣지 마세요. 서버에서 토큰 기반으로 자동 매핑합니다.
-- 공간 소유자(role=space)만 생성할 수 있습니다.
-
-**필수 필드:**
-- title: 공고 제목
-- description: 공고 설명
-- categories: 카테고리 배열
-- price_type: "paid" | "free" | "negotiable"
-- date: 공연 날짜
-
-**선택 필드:**
-- posting_image: 공고 이미지 파일
-- price_amount: 가격(유료일 때만)
-""",
         request_body=PostingSerializer,
         responses={201: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -122,7 +75,6 @@ class PostingViewSet(viewsets.ModelViewSet):
     # 공연 공고 수정 (PUT)
     @swagger_auto_schema(
         operation_summary="공연 공고 수정",
-        operation_description="공연 공고 정보를 수정합니다. (공간 소유자 또는 관리자만 가능)",
         request_body=PostingSerializer,
         responses={200: PostingSerializer, 400: "유효성 오류"},
         tags=["Posting"]
@@ -177,7 +129,7 @@ class PostingViewSet(viewsets.ModelViewSet):
         if not place_region and region:
             place_region = region
 
-        # 카테고리 필터 (쉼표 분리)
+        # 카테고리 필터
         if categories:
             cat_list = [c.strip() for c in categories.split(",") if c.strip()]
             if cat_list:
@@ -193,9 +145,13 @@ class PostingViewSet(viewsets.ModelViewSet):
         if date_to:
             qs = qs.filter(date__lte=date_to)
 
-        # ✅ 공간 지역 필터 (부분일치)
+        # ✅ 공간 지역 필터 (부분일치 + 마지막 토큰도 검사)
         if place_region:
-            qs = qs.filter(space__place_region__icontains=place_region)
+            tokens = place_region.strip().split()
+            if tokens:
+                qs = qs.filter(space__place_region__icontains=tokens[-1])
+            else:
+                qs = qs.filter(space__place_region__icontains=place_region)
 
         page = self.paginate_queryset(qs)
         ser = self.get_serializer(page or qs, many=True)
