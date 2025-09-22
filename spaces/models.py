@@ -22,7 +22,7 @@ class Space(models.Model):
     place_name = models.CharField(max_length=255)
     address = models.TextField()
     postal_code = models.CharField(max_length=10, blank=True, null=True)
-    kakao_map_link = models.URLField(max_length=500)
+    kakao_map_link = models.URLField(max_length=500, null=True, blank=True)
 
     # 카테고리
     categories = models.ManyToManyField(SpaceCategory, blank=True, related_name="spaces")
