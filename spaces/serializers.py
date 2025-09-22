@@ -8,6 +8,8 @@ from django.core.files.storage import default_storage
 import os
 import json
 import ast
+from cloudinary_storage.storage import MediaCloudinaryStorage
+storage = MediaCloudinaryStorage()
 
 
 def _norm_name(name: str) -> str:
@@ -64,31 +66,31 @@ class SpaceSerializer(serializers.ModelSerializer):
     # 이미지 처리
     # ----------------------------
     def create(self, validated_data):
-        request = self.context.get("request")
         images = validated_data.pop("place_image", [])
         space = super().create(validated_data)
 
-        # 업로드 파일 경로만 저장
         file_paths = []
+        if not isinstance(images, (list, tuple)):
+            images = [images]   # 단일 파일일 경우 배열로 감싸줌
         for img in images:
-            filename = default_storage.save(os.path.join("spaces/place", img.name), img)
+            filename = storage.save(f"spaces/place/{img.name}", img)
             file_paths.append(filename)
+
         space.place_image = file_paths
         space.save(update_fields=["place_image"])
-
-        # 절대 URL 변환 및 저장 (DB는 JSONField)
         space.update_place_image_urls()
         return space
 
     def update(self, instance, validated_data):
-        request = self.context.get("request")
         images = validated_data.pop("place_image", None)
         space = super().update(instance, validated_data)
 
         if images is not None:
             file_paths = []
+            if not isinstance(images, (list, tuple)):
+                images = [images]
             for img in images:
-                filename = default_storage.save(os.path.join("spaces/place", img.name), img)
+                filename = storage.save(f"spaces/place/{img.name}", img)
                 file_paths.append(filename)
             space.place_image = file_paths
             space.save(update_fields=["place_image"])
