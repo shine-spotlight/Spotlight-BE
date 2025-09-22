@@ -65,17 +65,15 @@ class SpaceSerializer(serializers.ModelSerializer):
         images = validated_data.pop("place_image", [])
         space = super().create(validated_data)
 
-        file_keys, file_urls = [], []
+        file_urls = []
         if not isinstance(images, (list, tuple)):
             images = [images]
         for img in images:
             filename = storage.save(f"spaces/place/{img.name}", img)  # Cloudinary 저장
-            file_keys.append(filename)
             file_urls.append(storage.url(filename))
 
-        space.place_image_list = file_keys
         space.place_image_url = file_urls
-        space.save(update_fields=["place_image_list", "place_image_url"])
+        space.save(update_fields=["place_image_url"])
         return space
 
     def update(self, instance, validated_data):
@@ -83,16 +81,14 @@ class SpaceSerializer(serializers.ModelSerializer):
         space = super().update(instance, validated_data)
 
         if images is not None:
-            file_keys, file_urls = [], []
+            file_urls = []
             if not isinstance(images, (list, tuple)):
                 images = [images]
             for img in images:
                 filename = storage.save(f"spaces/place/{img.name}", img)
-                file_keys.append(filename)
                 file_urls.append(storage.url(filename))
-            space.place_image_list = file_keys
             space.place_image_url = file_urls
-            space.save(update_fields=["place_image_list", "place_image_url"])
+            space.save(update_fields=["place_image_url"])
 
         return space
 
