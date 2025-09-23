@@ -89,10 +89,7 @@ class PostingSerializer(serializers.ModelSerializer):
         if categories is not None:
             try:
                 parsed = json.loads(categories)
-                if isinstance(parsed, (list, tuple)):
-                    mutable_data["categories"] = parsed
-                else:
-                    mutable_data["categories"] = [str(parsed)]
+                mutable_data["categories"] = parsed
             except Exception:
                 # fallback: 쉼표로 분리
                 mutable_data["categories"] = [x for x in str(categories).split(",") if x.strip()]
