@@ -54,8 +54,8 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     category_names = serializers.SerializerMethodField(read_only=True)
 
-    # ✅ 이미지: CharField로 받고 내부에서만 검증
-    posting_image = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    # ✅ 이미지: 모델 그대로 ImageField
+    posting_image = serializers.ImageField(write_only=True, required=False, allow_null=True)
     posting_image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -81,19 +81,9 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     def get_posting_image_url(self, obj):
-        if not obj.posting_image:
-            return None
-        try:
-            url = obj.posting_image.url
-        except Exception:
-            return None
-        if isinstance(url, str) and (url.startswith("http://") or url.startswith("https://")):
-            return url
-        site = getattr(settings, "SITE_DOMAIN", "").rstrip("/")
-        if site:
-            return f"{site}/{url.lstrip('/')}"
-        request = self.context.get("request")
-        return request.build_absolute_uri(url) if request else url
+        if obj.posting_image and hasattr(obj.posting_image, "url"):
+            return obj.posting_image.url
+        return obj.posting_image_url or None
 
     # ----------------------------
     # 입력 전처리
@@ -149,14 +139,6 @@ class PostingSerializer(serializers.ModelSerializer):
 
         return super().to_internal_value(mutable_data)
 
-    def validate_posting_image(self, value):
-        """파일이 아니면 None 처리"""
-        if not value:
-            return None
-        if hasattr(value, "read"):
-            return value  # 진짜 파일 객체
-        return None      # 문자열/엉뚱한 값 무시
-
     def validate(self, attrs):
         price_type = attrs.get("price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE))
         price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
@@ -171,9 +153,6 @@ class PostingSerializer(serializers.ModelSerializer):
     # 생성/수정
     # ----------------------------
     def create(self, validated_data):
-        # ✅ 이미지 무시 (CharField → Model.ImageField로 안 넘김)
-        validated_data.pop("posting_image", None)
-
         categories_data = validated_data.pop("categories", [])
         posting = super().create(validated_data)
 
@@ -186,9 +165,6 @@ class PostingSerializer(serializers.ModelSerializer):
         return posting
 
     def update(self, instance, validated_data):
-        # ✅ 이미지 무시 (CharField → Model.ImageField로 안 넘김)
-        validated_data.pop("posting_image", None)
-
         categories_data = validated_data.pop("categories", None)
         posting = super().update(instance, validated_data)
 
