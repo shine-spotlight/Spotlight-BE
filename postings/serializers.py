@@ -171,6 +171,9 @@ class PostingSerializer(serializers.ModelSerializer):
     # 생성/수정
     # ----------------------------
     def create(self, validated_data):
+        # ✅ 이미지 무시 (CharField → Model.ImageField로 안 넘김)
+        validated_data.pop("posting_image", None)
+
         categories_data = validated_data.pop("categories", [])
         posting = super().create(validated_data)
 
@@ -183,6 +186,9 @@ class PostingSerializer(serializers.ModelSerializer):
         return posting
 
     def update(self, instance, validated_data):
+        # ✅ 이미지 무시 (CharField → Model.ImageField로 안 넘김)
+        validated_data.pop("posting_image", None)
+
         categories_data = validated_data.pop("categories", None)
         posting = super().update(instance, validated_data)
 
