@@ -108,6 +108,19 @@ class PostingSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         mutable_data = dict(data)
 
+        # 파일 대신 문자열/빈값 등 들어왔을 때 방어
+        if "posting_image" in mutable_data:
+            val = mutable_data["posting_image"]
+            if not val:  # None, "", [], 등 falsy 값은 제거
+                mutable_data.pop("posting_image")
+            elif isinstance(val, str):
+                if val.startswith("http"):
+                    # URL 문자열이면 무시 (파일 업로드 아님)
+                    mutable_data.pop("posting_image")
+                else:
+                    # 문자열인데 URL도 아니면 제거
+                    mutable_data.pop("posting_image")
+
         # title, description: 리스트로 들어오면 첫 번째 값만 사용
         for key in ["title", "description"]:
             if key in mutable_data and isinstance(mutable_data[key], (list, tuple)):
