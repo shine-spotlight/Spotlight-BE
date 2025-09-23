@@ -5,8 +5,7 @@ from likes.models import Like
 from spaces.models import SpaceCategory
 from equipmentcategories.models import EquipmentCategory
 from cloudinary_storage.storage import MediaCloudinaryStorage
-import json
-import ast
+import json, ast
 
 storage = MediaCloudinaryStorage()
 
@@ -21,12 +20,11 @@ class SpaceSerializer(serializers.ModelSerializer):
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
-    # 여러 장 URL 배열 (출력, 절대 URL만 저장)
+    # 여러 장 URL 배열 (출력)
     place_image_url = serializers.ListField(
-        child=serializers.URLField(max_length=1000),  # DB는 JSONField, 길이 넉넉히
+        child=serializers.URLField(max_length=1000),
         read_only=True
     )
-
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -70,9 +68,9 @@ class SpaceSerializer(serializers.ModelSerializer):
 
         file_urls, public_ids = [], []
         for img in images:
-            filename = storage.save(f"spaces/place/{img.name}", img)  # Cloudinary 저장
+            filename = storage.save(f"spaces/place/{img.name}", img)
             file_urls.append(storage.url(filename))
-            public_ids.append(filename)  # Cloudinary public_id
+            public_ids.append(filename)
 
         space.place_image = public_ids
         space.place_image_url = file_urls
@@ -123,15 +121,30 @@ class SpaceSerializer(serializers.ModelSerializer):
         return any(not field or (hasattr(field, "__len__") and not len(field)) for field in required_fields)
 
     # ----------------------------
-    # 밸리데이션 (배열 강제)
+    # 밸리데이션 (배열 강제 + form-data 방어)
     # ----------------------------
     def validate_list_field(self, value, field_name):
-        """배열 필드를 무조건 list로 변환 (단순화)"""
         if value is None:
             return []
         if isinstance(value, str):
             value = value.strip()
-            return [value] if value else []
+            if not value:
+                return []
+            # JSON 문자열인지 확인
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                pass
+            # Python literal 형태인지 확인
+            try:
+                parsed = ast.literal_eval(value)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                pass
+            return [value]  # 그냥 단일 값으로 fallback
         if isinstance(value, (list, tuple)):
             return [str(x).strip() for x in value if str(x).strip()]
         raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})
