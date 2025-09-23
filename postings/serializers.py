@@ -5,12 +5,16 @@ from categories.models import Category
 from spaces.models import Space
 import ast, json
 
+
 def _norm_to_list(value):
-    """문자열/배열/None → 정규화된 list[str]"""
+    """
+    문자열/배열/None → 정규화된 list[str]
+    - JSON 문자열, literal_eval, 콤마 문자열도 방어
+    """
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
-        items = value
+        items = list(value)
     else:
         s = str(value).strip()
         if not s:
@@ -19,21 +23,20 @@ def _norm_to_list(value):
         try:
             parsed = json.loads(s)
             if isinstance(parsed, (list, tuple)):
-                items = parsed
+                items = list(parsed)
             else:
                 items = [s]
         except Exception:
-            # literal_eval
             try:
                 parsed = ast.literal_eval(s)
                 if isinstance(parsed, (list, tuple)):
-                    items = parsed
+                    items = list(parsed)
                 else:
                     items = [s]
             except Exception:
-                # 쉼표 구분 문자열
+                # 콤마 구분 문자열
                 items = [x for x in s.split(",") if x.strip()]
-    # 정규화: 소문자 + 공백제거 + 중복제거
+    # 정규화 (소문자 + 공백 제거 + 중복 제거)
     normed, seen = [], set()
     for x in items:
         v = str(x).strip().lower()
@@ -57,6 +60,7 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     category_names = serializers.SerializerMethodField(read_only=True)
 
+    # ✅ 이미지 (파일 입력 / URL 출력)
     posting_image = serializers.ImageField(write_only=True, required=False)
     posting_image_url = serializers.SerializerMethodField(read_only=True)
 
@@ -83,14 +87,14 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     def get_posting_image_url(self, obj):
+        """업로드된 이미지 URL 반환"""
         if not obj.posting_image:
             return None
         try:
             url = obj.posting_image.url
         except Exception:
             return None
-
-        if url.startswith("http://") or url.startswith("https://"):
+        if isinstance(url, str) and (url.startswith("http://") or url.startswith("https://")):
             return url
         site = getattr(settings, "SITE_DOMAIN", "").rstrip("/")
         if site:
@@ -102,18 +106,42 @@ class PostingSerializer(serializers.ModelSerializer):
     # 입력 전처리
     # ----------------------------
     def to_internal_value(self, data):
-        # ❌ deepcopy 유발: data.copy()
-        # data = data.copy()
-
-        # ✅ 안전하게 dict()만 사용
+        """
+        FormData가 문자열로 오는 경우를 방어 (categories, price_type 등)
+        """
         mutable_data = dict(data)
 
+        # 카테고리 보정
         if "categories" in mutable_data:
             mutable_data["categories"] = _norm_to_list(mutable_data.get("categories"))
+
+        # price_type 보정 (['paid'] → paid)
+        if "price_type" in mutable_data and isinstance(mutable_data["price_type"], str):
+            raw = mutable_data["price_type"].strip()
+            if raw.startswith("["):
+                try:
+                    parsed = ast.literal_eval(raw)
+                    if isinstance(parsed, (list, tuple)) and parsed:
+                        mutable_data["price_type"] = parsed[0]
+                except Exception:
+                    pass
+
+        # price_amount 보정 ("1000" → 1000)
+        if "price_amount" in mutable_data and isinstance(mutable_data["price_amount"], str):
+            if mutable_data["price_amount"].isdigit():
+                mutable_data["price_amount"] = int(mutable_data["price_amount"])
+
+        # date 보정 ("2025년 9월 23일" → "2025-09-23")
+        if "date" in mutable_data and isinstance(mutable_data["date"], str):
+            import re
+            m = re.search(r"(\d{4}).?(\d{1,2}).?(\d{1,2})", mutable_data["date"])
+            if m:
+                mutable_data["date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+
         return super().to_internal_value(mutable_data)
 
     def validate(self, attrs):
-        # 가격 검증
+        """가격 검증"""
         price_type = attrs.get("price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE))
         price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
 

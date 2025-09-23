@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from suggestions.serializers import SuggestionSerializer
+from .serializers import PostingSerializer, _norm_to_list   # ✅ 꼭 import 해줘야 함
+
 
 from .models import Posting
 from .serializers import PostingSerializer
@@ -132,7 +134,7 @@ class PostingViewSet(viewsets.ModelViewSet):
 
         # 카테고리 필터
         if categories:
-            cat_list = [c.strip() for c in categories.split(",") if c.strip()]
+            cat_list = _norm_to_list(categories)
             if cat_list:
                 qs = qs.filter(categories__name__in=cat_list)
 

@@ -98,9 +98,15 @@ AUTH_USER_MODEL = "users.User"
 # Database
 DATABASES = {
     "default": dj_database_url.parse(
-        os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
+        os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600,
+        ssl_require=False
     )
 }
+
+# ✅ 요청 단위 트랜잭션 강제
+DATABASES["default"]["ATOMIC_REQUESTS"] = True
+
 
 
 # Password validation
