@@ -102,10 +102,15 @@ class PostingSerializer(serializers.ModelSerializer):
     # 입력 전처리
     # ----------------------------
     def to_internal_value(self, data):
-        data = data.copy()
-        if "categories" in data:
-            data["categories"] = _norm_to_list(data.get("categories"))
-        return super().to_internal_value(data)
+        # ❌ deepcopy 유발: data.copy()
+        # data = data.copy()
+
+        # ✅ 안전하게 dict()만 사용
+        mutable_data = dict(data)
+
+        if "categories" in mutable_data:
+            mutable_data["categories"] = _norm_to_list(mutable_data.get("categories"))
+        return super().to_internal_value(mutable_data)
 
     def validate(self, attrs):
         # 가격 검증
