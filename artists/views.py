@@ -15,6 +15,7 @@ from users.permissions import IsOwnerOrReadOnlyWithAdminPass
 from rest_framework.exceptions import ValidationError, PermissionDenied
 import json
 import ast
+from categories.models import Category
 
 # 에러 포맷 통일
 def bad_request(detail: str, field: str):
@@ -352,28 +353,6 @@ class ArtistViewSet(viewsets.ModelViewSet):
 - category: 카테고리명 (정확 일치, 예: "음악")
 - pay_min: 최소 페이
 - pay_max: 최대 페이
-
-**예시:**  
-`/api/v1/artists/filter/?region=서울&category=음악&pay_min=10000&pay_max=50000`
-
-**응답 예시:**
-```json
-{
-  "count": 15,
-  "next": null,
-  "previous": null,
-  "results": [
-    {
-      "id": 1,
-      "name": "밴드A",
-      "categories_display": ["음악"],
-      "region": ["서울", "경기"],
-      "desired_pay": 100000,
-      "is_free_allowed": true
-    }
-  ]
-}
-```
 """,
         manual_parameters=[
             openapi.Parameter('region', openapi.IN_QUERY, type=openapi.TYPE_STRING, description='지역 (부분 일치, 예: "서울")'),
@@ -395,9 +374,14 @@ class ArtistViewSet(viewsets.ModelViewSet):
         if region:
             norm_region = _norm_name(region)
             qs = qs.filter(region__icontains=norm_region)
+
         if category:
-            norm_category = _norm_name(category)
-            qs = qs.filter(categories__name=norm_category)
+            try:
+                cat_obj = Category.objects.get(name=category)  # ✅ Category 객체 기반 필터링
+                qs = qs.filter(categories=cat_obj)
+            except Category.DoesNotExist:
+                return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
+
         if pay_min:
             qs = qs.filter(desired_pay__gte=int(pay_min))
         if pay_max:
