@@ -44,7 +44,7 @@ def _norm_to_list(value):
 
 
 def _norm_name(name: str) -> str:
-    """문자열을 정규화해서 소문자 + 공백 정리"""
+    """문자열 정규화 (소문자 + 공백 정리)"""
     return " ".join(str(name).strip().split()).lower()
 
 
@@ -89,40 +89,54 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     # ----------------------------
+    # 카테고리 매핑 유틸
+    # ----------------------------
+    def _map_categories(self, categories_data):
+        """입력값 정규화 후 DB 이름 정규화 비교"""
+        if not categories_data:
+            return []
+
+        normed_input = [_norm_name(c) for c in categories_data]
+
+        # DB 카테고리 전부 불러와서 정규화
+        all_cats = Category.objects.all()
+        name_map = {_norm_name(c.name): c for c in all_cats}
+
+        cats = []
+        missing = []
+        for ni in normed_input:
+            if ni in name_map:
+                cats.append(name_map[ni])
+            else:
+                missing.append(ni)
+
+        if missing:
+            raise serializers.ValidationError(
+                {"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"}
+            )
+        return cats
+
+    # ----------------------------
     # create/update
     # ----------------------------
     def create(self, validated_data):
         validated_data.pop("posting_image", None)
-
         categories_data = validated_data.pop("categories", [])
-        # ✅ 문자열 정규화
-        categories_data = [_norm_name(c) for c in categories_data]
-
-        cats = Category.objects.filter(name__in=categories_data)
-        if cats.count() != len(categories_data):
-            found = {c.name for c in cats}
-            missing = set(categories_data) - found
-            raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
         posting = super().create(validated_data)
+
+        cats = self._map_categories(categories_data)
         posting.categories.set(cats)
         return posting
 
     def update(self, instance, validated_data):
         validated_data.pop("posting_image", None)
-
         categories_data = validated_data.pop("categories", None)
-        if categories_data is not None:
-            # ✅ 문자열 정규화
-            categories_data = [_norm_name(c) for c in categories_data]
-
-            cats = Category.objects.filter(name__in=categories_data)
-            if cats.count() != len(categories_data):
-                found = {c.name for c in cats}
-                missing = set(categories_data) - found
-                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
-            instance.categories.set(cats)
 
         posting = super().update(instance, validated_data)
+
+        if categories_data is not None:
+            cats = self._map_categories(categories_data)
+            posting.categories.set(cats)
         return posting
 
     # ----------------------------
