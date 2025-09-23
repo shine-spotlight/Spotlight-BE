@@ -84,8 +84,10 @@ class PostingSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         # QueryDict는 immutable이므로 복사본을 만들어 수정
+        print("DEBUG: data input =", data)
         mutable_data = data.copy() if hasattr(data, "copy") else dict(data)
         categories = mutable_data.get("categories")
+        print("DEBUG: categories input =", categories)
         if categories is not None:
             try:
                 parsed = json.loads(categories)
