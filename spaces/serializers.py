@@ -17,15 +17,16 @@ def _norm_name(name: str) -> str:
 
 
 class SpaceSerializer(serializers.ModelSerializer):
-    # 이미지 입력: 단일/다중 모두 허용
+    # 여러 장 이미지 업로드 (입력, 파일 경로만 저장)
     place_image = serializers.ListField(
         child=serializers.ImageField(), write_only=True, required=False
     )
-    # 출력: URL 배열
+    # 여러 장 URL 배열 (출력, 절대 URL만 저장)
     place_image_url = serializers.ListField(
-        child=serializers.URLField(max_length=1000),
+        child=serializers.URLField(max_length=1000),  # DB는 JSONField, 길이 넉넉히
         read_only=True
     )
+
 
     # 카테고리 입력/출력
     categories = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
@@ -60,15 +61,6 @@ class SpaceSerializer(serializers.ModelSerializer):
             "place_region", "is_liked"
         ]
 
-    def to_internal_value(self, data):
-        """
-        FormData에서 단일 파일/다중 파일 둘 다 리스트로 강제 변환
-        """
-        if isinstance(data, dict) and "place_image" in data:
-            images = data.getlist("place_image") if hasattr(data, "getlist") else [data["place_image"]]
-            data["place_image"] = images
-        return super().to_internal_value(data)
-
     # ----------------------------
     # 이미지 처리
     # ----------------------------
@@ -76,15 +68,15 @@ class SpaceSerializer(serializers.ModelSerializer):
         images = validated_data.pop("place_image", [])
         space = super().create(validated_data)
 
-        file_urls = []
-        if not isinstance(images, (list, tuple)):
-            images = [images]
+        file_urls, public_ids = [], []
         for img in images:
             filename = storage.save(f"spaces/place/{img.name}", img)  # Cloudinary 저장
             file_urls.append(storage.url(filename))
+            public_ids.append(filename)  # Cloudinary public_id
 
+        space.place_image = public_ids
         space.place_image_url = file_urls
-        space.save(update_fields=["place_image_url"])
+        space.save(update_fields=["place_image", "place_image_url"])
         return space
 
     def update(self, instance, validated_data):
@@ -92,14 +84,14 @@ class SpaceSerializer(serializers.ModelSerializer):
         space = super().update(instance, validated_data)
 
         if images is not None:
-            file_urls = []
-            if not isinstance(images, (list, tuple)):
-                images = [images]
+            file_urls, public_ids = [], []
             for img in images:
                 filename = storage.save(f"spaces/place/{img.name}", img)
                 file_urls.append(storage.url(filename))
+                public_ids.append(filename)
+            space.place_image = public_ids
             space.place_image_url = file_urls
-            space.save(update_fields=["place_image_url"])
+            space.save(update_fields=["place_image", "place_image_url"])
 
         return space
 
@@ -134,23 +126,12 @@ class SpaceSerializer(serializers.ModelSerializer):
     # 밸리데이션 (배열 강제)
     # ----------------------------
     def validate_list_field(self, value, field_name):
-        """FormData로 들어온 문자열 배열 처리"""
+        """배열 필드를 무조건 list로 변환 (단순화)"""
         if value is None:
             return []
         if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
-                if isinstance(parsed, list):
-                    return [str(x).strip() for x in parsed]
-            except Exception:
-                pass
-            try:
-                parsed = ast.literal_eval(value)
-                if isinstance(parsed, list):
-                    return [str(x).strip() for x in parsed]
-            except Exception:
-                pass
-            return [value.strip()]
+            value = value.strip()
+            return [value] if value else []
         if isinstance(value, (list, tuple)):
             return [str(x).strip() for x in value if str(x).strip()]
         raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})

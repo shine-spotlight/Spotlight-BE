@@ -38,12 +38,10 @@ class Space(models.Model):
     business_registration_number = models.CharField(max_length=20, unique=True)
     atmosphere = models.JSONField(default=list, blank=True)
 
-    # ✅ Cloudinary 업로드 (프론트 필드명: place_image 고정)
-    # 여러 장 업로드를 지원하기 위해 ImageField 자체는 단일이지만, 다중 업로드를 받으면
-    # view/serializer에서 반복 저장 → JSONField에 누적 기록
-
+    # ✅ Cloudinary 업로드: 여러 장 지원
     place_image = models.JSONField(default=list, blank=True, help_text="Cloudinary public_id 목록")
     place_image_url = models.JSONField(default=list, blank=True, help_text="Cloudinary URL 목록")
+    
 
     @property
     def main_image_url(self):
