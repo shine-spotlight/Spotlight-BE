@@ -45,7 +45,7 @@ def _norm_to_list(value):
 
 def _norm_name(name: str) -> str:
     """문자열 정규화 (소문자 + 공백 정리)"""
-    return " ".join(str(name).strip().split()).lower()
+    return "".join(str(name).strip().split()).lower()
 
 
 class PostingSerializer(serializers.ModelSerializer):
@@ -61,9 +61,7 @@ class PostingSerializer(serializers.ModelSerializer):
     posting_image_url = serializers.URLField(read_only=True)
 
     # ✅ 카테고리 문자열 배열
-    categories = serializers.ListField(
-        child=serializers.CharField(), write_only=True, required=False
-    )
+    categories = serializers.CharField(write_only=True, required=False)
     category_names = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -82,6 +80,21 @@ class PostingSerializer(serializers.ModelSerializer):
             "space_address", "posting_image_url", "place_region"
         ]
 
+    def to_internal_value(self, data):
+        # categories가 JSON 문자열이면 파싱해서 리스트로 변환
+        categories = data.get("categories")
+        if categories is not None:
+            try:
+                parsed = json.loads(categories)
+                if isinstance(parsed, (list, tuple)):
+                    data["categories"] = parsed
+                else:
+                    data["categories"] = [str(parsed)]
+            except Exception:
+                # fallback: 쉼표로 분리
+                data["categories"] = [x for x in str(categories).split(",") if x.strip()]
+        return super().to_internal_value(data)
+
     # ----------------------------
     # 출력
     # ----------------------------
@@ -93,6 +106,7 @@ class PostingSerializer(serializers.ModelSerializer):
     # ----------------------------
     def _map_categories(self, categories_data):
         """입력값 정규화 후 DB 이름 정규화 비교"""
+        print("DEBUG: categories input =", categories_data)
         if not categories_data:
             return []
 

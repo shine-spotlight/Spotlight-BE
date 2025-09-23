@@ -18,7 +18,7 @@ def _norm_to_list(value):
     return [s] if s else []
 
 def _norm_name(name: str) -> str:
-    return " ".join(str(name).strip().split()).lower()
+    return "".join(str(name).strip().split()).lower()
 
 class ArtistSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
