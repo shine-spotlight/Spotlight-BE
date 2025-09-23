@@ -61,7 +61,9 @@ class PostingSerializer(serializers.ModelSerializer):
     posting_image_url = serializers.URLField(read_only=True)
 
     # ✅ 카테고리 문자열 배열
-    categories = serializers.CharField(write_only=True, required=False)
+    categories = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False
+    )    
     category_names = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
