@@ -63,13 +63,14 @@ class PostingViewSet(viewsets.ModelViewSet):
         except Space.DoesNotExist:
             return bad_request("해당 유저의 공간 프로필이 없습니다.", "space")
 
-        data = request.data.copy()
-        data.pop("space", None)
-        data.pop("space_id", None)
+        data = request.data  # ✅ copy() 제거 (deepcopy 안함)
+# space_id는 클라이언트에서 안 보내는 게 원칙, 보내더라도 무시
+# 굳이 pop 필요 없다면 지워도 됨
 
         ser = self.get_serializer(data=data)
         ser.is_valid(raise_exception=True)
         posting = ser.save(space=space)
+
         return Response(self.get_serializer(posting).data, status=status.HTTP_201_CREATED)
 
     # 공연 공고 수정 (PUT)
