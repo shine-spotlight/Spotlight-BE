@@ -3,7 +3,10 @@ from django.conf import settings
 from .models import Posting
 from categories.models import Category
 from spaces.models import Space
+from cloudinary_storage.storage import MediaCloudinaryStorage
 import ast, json
+
+storage = MediaCloudinaryStorage()
 
 
 def _norm_to_list(value):
@@ -48,15 +51,15 @@ class PostingSerializer(serializers.ModelSerializer):
     space_address = serializers.CharField(source="space.address", read_only=True)
     place_region = serializers.CharField(source="space.place_region", read_only=True)
 
-    # ✅ 입력: 카테고리 문자열 배열
+    # ✅ 이미지 업로드 (단일 파일)
+    posting_image = serializers.ImageField(write_only=True, required=False)
+    posting_image_url = serializers.URLField(read_only=True)
+
+    # ✅ 카테고리 문자열 배열
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
     )
     category_names = serializers.SerializerMethodField(read_only=True)
-
-    # ✅ 이미지: 모델 그대로 ImageField
-    posting_image = serializers.ImageField(write_only=True, required=False, allow_null=True)
-    posting_image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Posting
@@ -80,99 +83,73 @@ class PostingSerializer(serializers.ModelSerializer):
     def get_category_names(self, obj):
         return [c.name for c in obj.categories.all()]
 
-    def get_posting_image_url(self, obj):
-        if obj.posting_image and hasattr(obj.posting_image, "url"):
-            return obj.posting_image.url
-        return obj.posting_image_url or None
-
     # ----------------------------
-    # 입력 전처리
-    # ----------------------------
-    def to_internal_value(self, data):
-        mutable_data = dict(data)
-
-        # title, description: 리스트로 들어오면 첫 번째 값만 사용
-        for key in ["title", "description"]:
-            if key in mutable_data and isinstance(mutable_data[key], (list, tuple)):
-                mutable_data[key] = mutable_data[key][0]
-
-        # price_type: 배열이나 문자열 리스트 방어
-        if "price_type" in mutable_data:
-            raw = mutable_data["price_type"]
-            if isinstance(raw, (list, tuple)):
-                raw = raw[0]
-            if isinstance(raw, str) and raw.startswith("["):
-                try:
-                    parsed = ast.literal_eval(raw)
-                    if isinstance(parsed, (list, tuple)) and parsed:
-                        raw = parsed[0]
-                except Exception:
-                    pass
-            mutable_data["price_type"] = str(raw).strip().lower()
-
-        # price_amount: 문자열이면 int 캐스팅
-        if "price_amount" in mutable_data:
-            raw = mutable_data["price_amount"]
-            if isinstance(raw, (list, tuple)):
-                raw = raw[0]
-            try:
-                mutable_data["price_amount"] = int(raw)
-            except Exception:
-                mutable_data["price_amount"] = None
-
-        # date: YYYY-MM-DD 강제
-        if "date" in mutable_data:
-            raw = mutable_data["date"]
-            if isinstance(raw, (list, tuple)):
-                raw = raw[0]
-            raw = str(raw).strip()
-            from datetime import datetime
-            try:
-                dt = datetime.strptime(raw, "%Y-%m-%d")
-                mutable_data["date"] = dt.date()
-            except Exception:
-                pass
-
-        # categories: 문자열 → 리스트 보정
-        if "categories" in mutable_data:
-            mutable_data["categories"] = _norm_to_list(mutable_data.get("categories"))
-
-        return super().to_internal_value(mutable_data)
-
-    def validate(self, attrs):
-        price_type = attrs.get("price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE))
-        price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
-
-        if price_type == Posting.PRICE_PAID and price_amount is None:
-            raise serializers.ValidationError({"price_amount": "price_type=paid일 때 price_amount는 필수입니다."})
-        if price_type in (Posting.PRICE_FREE, Posting.PRICE_NEGOTIABLE):
-            attrs["price_amount"] = None
-        return attrs
-
-    # ----------------------------
-    # 생성/수정
+    # create/update → Cloudinary 직접 저장
     # ----------------------------
     def create(self, validated_data):
+        image = validated_data.pop("posting_image", None)
         categories_data = validated_data.pop("categories", [])
+
         posting = super().create(validated_data)
 
+        # ✅ Cloudinary 업로드
+        if image:
+            filename = storage.save(f"postings/{image.name}", image)
+            posting.posting_image = filename
+            posting.posting_image_url = storage.url(filename)
+            posting.save(update_fields=["posting_image", "posting_image_url"])
+
+        # 카테고리 처리
         cats = Category.objects.filter(name__in=categories_data)
         if cats.count() != len(categories_data):
             found = {c.name for c in cats}
             missing = set(categories_data) - found
-            raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
+            raise serializers.ValidationError(
+                {"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"}
+            )
         posting.categories.set(cats)
+
         return posting
 
     def update(self, instance, validated_data):
+        image = validated_data.pop("posting_image", None)
         categories_data = validated_data.pop("categories", None)
+
         posting = super().update(instance, validated_data)
 
+        # ✅ Cloudinary 업로드
+        if image:
+            filename = storage.save(f"postings/{image.name}", image)
+            posting.posting_image = filename
+            posting.posting_image_url = storage.url(filename)
+            posting.save(update_fields=["posting_image", "posting_image_url"])
+
+        # 카테고리 처리
         if categories_data is not None:
             cats = Category.objects.filter(name__in=categories_data)
             if cats.count() != len(categories_data):
                 found = {c.name for c in cats}
                 missing = set(categories_data) - found
-                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
+                raise serializers.ValidationError(
+                    {"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"}
+                )
             posting.categories.set(cats)
+
         return posting
+
+    # ----------------------------
+    # 가격 검증
+    # ----------------------------
+    def validate(self, attrs):
+        price_type = attrs.get(
+            "price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE)
+        )
+        price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
+
+        if price_type == Posting.PRICE_PAID and price_amount is None:
+            raise serializers.ValidationError(
+                {"price_amount": "price_type=paid일 때 price_amount는 필수입니다."}
+            )
+        if price_type in (Posting.PRICE_FREE, Posting.PRICE_NEGOTIABLE):
+            attrs["price_amount"] = None
+        return attrs
