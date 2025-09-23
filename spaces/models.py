@@ -19,7 +19,7 @@ class Space(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     # 기본 정보
-    place_name = models.CharField(max_length=255)
+    place_name = models.CharField(max_length=255,null=True, blank=True)
     address = models.TextField()
     postal_code = models.CharField(max_length=10, blank=True, null=True)
     kakao_map_link = models.URLField(max_length=500, null=True, blank=True)
