@@ -367,7 +367,8 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def filter_artists(self, request):
         qs = self.queryset
         region = request.query_params.get("region")
-        category = request.query_params.get("category")
+        category = request.query_params.get("category")  # 변수명은 단수형 유지
+
         pay_min = request.query_params.get("pay_min")
         pay_max = request.query_params.get("pay_max")
 
@@ -376,11 +377,14 @@ class ArtistViewSet(viewsets.ModelViewSet):
             qs = qs.filter(region__icontains=norm_region)
 
         if category:
-            try:
-                cat_obj = Category.objects.get(name=category)  # ✅ Category 객체 기반 필터링
-                qs = qs.filter(categories=cat_obj)
-            except Category.DoesNotExist:
-                return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
+            # 쉼표로 여러 개 들어올 수 있음
+            category_names = [c.strip() for c in category.split(",") if c.strip()]
+            cat_objs = Category.objects.filter(name__in=category_names)
+            if cat_objs.count() != len(category_names):
+                found = set(c.name for c in cat_objs)
+                missing = set(category_names) - found
+                return Response({"detail": f"존재하지 않는 카테고리: {', '.join(missing)}"}, status=400)
+            qs = qs.filter(categories__in=cat_objs)
 
         if pay_min:
             qs = qs.filter(desired_pay__gte=int(pay_min))

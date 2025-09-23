@@ -27,6 +27,10 @@ from postings.views import PostingViewSet
 from points.views import PointViewSet
 from demandapi.views import DemandViewSet
 from adminapi.views import AdminViewSet
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({"status": "ok"})
 
 # 📌 Swagger 기본 정보
 schema_view = get_schema_view(
@@ -62,6 +66,7 @@ router.register(r'admin', AdminViewSet, basename='admin')
 
 # 📌 URL 패턴
 urlpatterns = [
+    path("", health_check),  # 👈 추가
     path("admin/", admin.site.urls),
     path("api/v1/", include(router.urls)),
     path("api-token-auth/", views.obtain_auth_token),
