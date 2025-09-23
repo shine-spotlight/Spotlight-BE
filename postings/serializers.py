@@ -7,10 +7,7 @@ import ast, json
 
 
 def _norm_to_list(value):
-    """
-    문자열/배열/None → 정규화된 list[str]
-    - JSON 문자열, literal_eval, 콤마 문자열도 방어
-    """
+    """문자열/배열/None → 정규화된 list[str]"""
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
@@ -19,7 +16,6 @@ def _norm_to_list(value):
         s = str(value).strip()
         if not s:
             return []
-        # JSON 파싱
         try:
             parsed = json.loads(s)
             if isinstance(parsed, (list, tuple)):
@@ -34,9 +30,7 @@ def _norm_to_list(value):
                 else:
                     items = [s]
             except Exception:
-                # 콤마 구분 문자열
                 items = [x for x in s.split(",") if x.strip()]
-    # 정규화 (소문자 + 공백 제거 + 중복 제거)
     normed, seen = [], set()
     for x in items:
         v = str(x).strip().lower()
@@ -60,8 +54,8 @@ class PostingSerializer(serializers.ModelSerializer):
     )
     category_names = serializers.SerializerMethodField(read_only=True)
 
-    # ✅ 이미지 (파일 입력 / URL 출력)
-    posting_image = serializers.ImageField(write_only=True, required=False)
+    # ✅ 이미지: CharField로 받고 내부에서만 검증
+    posting_image = serializers.CharField(write_only=True, required=False, allow_blank=True)
     posting_image_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -87,7 +81,6 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     def get_posting_image_url(self, obj):
-        """업로드된 이미지 URL 반환"""
         if not obj.posting_image:
             return None
         try:
@@ -108,25 +101,12 @@ class PostingSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         mutable_data = dict(data)
 
-        # 파일 대신 문자열/빈값 등 들어왔을 때 방어
-        if "posting_image" in mutable_data:
-            val = mutable_data["posting_image"]
-            if not val:  # None, "", [], 등 falsy 값은 제거
-                mutable_data.pop("posting_image")
-            elif isinstance(val, str):
-                if val.startswith("http"):
-                    # URL 문자열이면 무시 (파일 업로드 아님)
-                    mutable_data.pop("posting_image")
-                else:
-                    # 문자열인데 URL도 아니면 제거
-                    mutable_data.pop("posting_image")
-
         # title, description: 리스트로 들어오면 첫 번째 값만 사용
         for key in ["title", "description"]:
             if key in mutable_data and isinstance(mutable_data[key], (list, tuple)):
                 mutable_data[key] = mutable_data[key][0]
 
-        # price_type: 문자열 배열 방어
+        # price_type: 배열이나 문자열 리스트 방어
         if "price_type" in mutable_data:
             raw = mutable_data["price_type"]
             if isinstance(raw, (list, tuple)):
@@ -161,7 +141,7 @@ class PostingSerializer(serializers.ModelSerializer):
                 dt = datetime.strptime(raw, "%Y-%m-%d")
                 mutable_data["date"] = dt.date()
             except Exception:
-                pass  # 그대로 두면 DRF가 에러 리턴
+                pass
 
         # categories: 문자열 → 리스트 보정
         if "categories" in mutable_data:
@@ -169,8 +149,15 @@ class PostingSerializer(serializers.ModelSerializer):
 
         return super().to_internal_value(mutable_data)
 
+    def validate_posting_image(self, value):
+        """파일이 아니면 None 처리"""
+        if not value:
+            return None
+        if hasattr(value, "read"):
+            return value  # 진짜 파일 객체
+        return None      # 문자열/엉뚱한 값 무시
+
     def validate(self, attrs):
-        """가격 검증"""
         price_type = attrs.get("price_type", getattr(self.instance, "price_type", Posting.PRICE_NEGOTIABLE))
         price_amount = attrs.get("price_amount", getattr(self.instance, "price_amount", None))
 
