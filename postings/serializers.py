@@ -43,6 +43,11 @@ def _norm_to_list(value):
     return normed
 
 
+def _norm_name(name: str) -> str:
+    """문자열을 정규화해서 소문자 + 공백 정리"""
+    return " ".join(str(name).strip().split()).lower()
+
+
 class PostingSerializer(serializers.ModelSerializer):
     space_id = serializers.PrimaryKeyRelatedField(
         queryset=Space.objects.all(), source="space", write_only=True, required=False
@@ -84,57 +89,40 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     # ----------------------------
-    # create/update → Cloudinary 직접 저장
+    # create/update
     # ----------------------------
     def create(self, validated_data):
-        image = validated_data.pop("posting_image", None)
+        validated_data.pop("posting_image", None)
+
         categories_data = validated_data.pop("categories", [])
+        # ✅ 문자열 정규화
+        categories_data = [_norm_name(c) for c in categories_data]
 
-        posting = super().create(validated_data)
-
-        # ✅ Cloudinary 업로드
-        if image:
-            filename = storage.save(f"postings/{image.name}", image)
-            posting.posting_image = filename
-            posting.posting_image_url = storage.url(filename)
-            posting.save(update_fields=["posting_image", "posting_image_url"])
-
-        # 카테고리 처리
         cats = Category.objects.filter(name__in=categories_data)
         if cats.count() != len(categories_data):
             found = {c.name for c in cats}
             missing = set(categories_data) - found
-            raise serializers.ValidationError(
-                {"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"}
-            )
+            raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
+        posting = super().create(validated_data)
         posting.categories.set(cats)
-
         return posting
 
     def update(self, instance, validated_data):
-        image = validated_data.pop("posting_image", None)
+        validated_data.pop("posting_image", None)
+
         categories_data = validated_data.pop("categories", None)
-
-        posting = super().update(instance, validated_data)
-
-        # ✅ Cloudinary 업로드
-        if image:
-            filename = storage.save(f"postings/{image.name}", image)
-            posting.posting_image = filename
-            posting.posting_image_url = storage.url(filename)
-            posting.save(update_fields=["posting_image", "posting_image_url"])
-
-        # 카테고리 처리
         if categories_data is not None:
+            # ✅ 문자열 정규화
+            categories_data = [_norm_name(c) for c in categories_data]
+
             cats = Category.objects.filter(name__in=categories_data)
             if cats.count() != len(categories_data):
                 found = {c.name for c in cats}
                 missing = set(categories_data) - found
-                raise serializers.ValidationError(
-                    {"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"}
-                )
-            posting.categories.set(cats)
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(missing)}"})
+            instance.categories.set(cats)
 
+        posting = super().update(instance, validated_data)
         return posting
 
     # ----------------------------
