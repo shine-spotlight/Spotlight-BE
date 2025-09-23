@@ -141,6 +141,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "users.permissions.IsOwnerOrReadOnlyWithAdminPass"
     ],
+    "EXCEPTION_HANDLER": "config.utils.custom_exception_handler",
 }
 
 # ✅ CORS 설정
