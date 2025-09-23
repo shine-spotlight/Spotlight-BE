@@ -81,19 +81,20 @@ class PostingSerializer(serializers.ModelSerializer):
         ]
 
     def to_internal_value(self, data):
-        # categories가 JSON 문자열이면 파싱해서 리스트로 변환
-        categories = data.get("categories")
+        # QueryDict는 immutable이므로 복사본을 만들어 수정
+        mutable_data = data.copy() if hasattr(data, "copy") else dict(data)
+        categories = mutable_data.get("categories")
         if categories is not None:
             try:
                 parsed = json.loads(categories)
                 if isinstance(parsed, (list, tuple)):
-                    data["categories"] = parsed
+                    mutable_data["categories"] = parsed
                 else:
-                    data["categories"] = [str(parsed)]
+                    mutable_data["categories"] = [str(parsed)]
             except Exception:
                 # fallback: 쉼표로 분리
-                data["categories"] = [x for x in str(categories).split(",") if x.strip()]
-        return super().to_internal_value(data)
+                mutable_data["categories"] = [x for x in str(categories).split(",") if x.strip()]
+        return super().to_internal_value(mutable_data)
 
     # ----------------------------
     # 출력
