@@ -106,37 +106,53 @@ class PostingSerializer(serializers.ModelSerializer):
     # 입력 전처리
     # ----------------------------
     def to_internal_value(self, data):
-        """
-        FormData가 문자열로 오는 경우를 방어 (categories, price_type 등)
-        """
         mutable_data = dict(data)
 
-        # 카테고리 보정
-        if "categories" in mutable_data:
-            mutable_data["categories"] = _norm_to_list(mutable_data.get("categories"))
+        # title, description: 리스트로 들어오면 첫 번째 값만 사용
+        for key in ["title", "description"]:
+            if key in mutable_data and isinstance(mutable_data[key], (list, tuple)):
+                mutable_data[key] = mutable_data[key][0]
 
-        # price_type 보정 (['paid'] → paid)
-        if "price_type" in mutable_data and isinstance(mutable_data["price_type"], str):
-            raw = mutable_data["price_type"].strip()
-            if raw.startswith("["):
+        # price_type: 문자열 배열 방어
+        if "price_type" in mutable_data:
+            raw = mutable_data["price_type"]
+            if isinstance(raw, (list, tuple)):
+                raw = raw[0]
+            if isinstance(raw, str) and raw.startswith("["):
                 try:
                     parsed = ast.literal_eval(raw)
                     if isinstance(parsed, (list, tuple)) and parsed:
-                        mutable_data["price_type"] = parsed[0]
+                        raw = parsed[0]
                 except Exception:
                     pass
+            mutable_data["price_type"] = str(raw).strip().lower()
 
-        # price_amount 보정 ("1000" → 1000)
-        if "price_amount" in mutable_data and isinstance(mutable_data["price_amount"], str):
-            if mutable_data["price_amount"].isdigit():
-                mutable_data["price_amount"] = int(mutable_data["price_amount"])
+        # price_amount: 문자열이면 int 캐스팅
+        if "price_amount" in mutable_data:
+            raw = mutable_data["price_amount"]
+            if isinstance(raw, (list, tuple)):
+                raw = raw[0]
+            try:
+                mutable_data["price_amount"] = int(raw)
+            except Exception:
+                mutable_data["price_amount"] = None
 
-        # date 보정 ("2025년 9월 23일" → "2025-09-23")
-        if "date" in mutable_data and isinstance(mutable_data["date"], str):
-            import re
-            m = re.search(r"(\d{4}).?(\d{1,2}).?(\d{1,2})", mutable_data["date"])
-            if m:
-                mutable_data["date"] = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+        # date: YYYY-MM-DD 강제
+        if "date" in mutable_data:
+            raw = mutable_data["date"]
+            if isinstance(raw, (list, tuple)):
+                raw = raw[0]
+            raw = str(raw).strip()
+            from datetime import datetime
+            try:
+                dt = datetime.strptime(raw, "%Y-%m-%d")
+                mutable_data["date"] = dt.date()
+            except Exception:
+                pass  # 그대로 두면 DRF가 에러 리턴
+
+        # categories: 문자열 → 리스트 보정
+        if "categories" in mutable_data:
+            mutable_data["categories"] = _norm_to_list(mutable_data.get("categories"))
 
         return super().to_internal_value(mutable_data)
 
