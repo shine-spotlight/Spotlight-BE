@@ -14,6 +14,7 @@ from equipmentcategories.models import EquipmentCategory
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from spaces.models import SpaceCategory
 import json
+from django.db import models
 import ast
 
 # 에러 포맷 통일배포
@@ -301,26 +302,33 @@ class SpaceViewSet(viewsets.ModelViewSet):
     def filter_spaces(self, request):
         qs = self.queryset
         region = request.query_params.get("region")
-        category = request.query_params.get("category")
         cap_min = request.query_params.get("cap_min")
         cap_max = request.query_params.get("cap_max")
 
+        # 여러 카테고리 지원 (category/categories 모두 허용)
+        categories = request.query_params.getlist("category") or request.query_params.getlist("categories")
+        if categories:
+            norm_categories = [_norm_name(c) for c in categories]
+            qs = qs.filter(
+                models.Q(categories__name__in=norm_categories) |
+                models.Q(preferred_categories__name__in=norm_categories)
+            ).distinct()
+        else:
+            category = request.query_params.get("category")
+            if category:
+                norm_category = _norm_name(category)
+                cat_obj = SpaceCategory.objects.filter(name=norm_category).first()
+                if cat_obj:
+                    qs = qs.filter(categories=cat_obj)
+                else:
+                    pref_obj = Category.objects.filter(name=norm_category).first()
+                    if pref_obj:
+                        qs = qs.filter(preferred_categories=pref_obj)
+                    else:
+                        return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
+
         if region:
             qs = qs.filter(place_region__icontains=region)
-        if category:
-            norm_category = _norm_name(category)
-
-            # SpaceCategory 매칭
-            cat_obj = SpaceCategory.objects.filter(name=norm_category).first()
-            if cat_obj:
-                qs = qs.filter(categories=cat_obj)
-            else:
-                # Category(선호 카테고리) 매칭
-                pref_obj = Category.objects.filter(name=norm_category).first()
-                if pref_obj:
-                    qs = qs.filter(preferred_categories=pref_obj)
-                else:
-                    return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
         if cap_min:
             qs = qs.filter(capacity_seated__gte=int(cap_min))
         if cap_max:
