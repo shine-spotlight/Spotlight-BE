@@ -214,10 +214,9 @@ class ArtistSerializer(serializers.ModelSerializer):
         return attrs
 
     def to_representation(self, obj):
-        """응답에서 profile_image_url을 항상 http(s) 절대 URL로 보장."""
         data = super().to_representation(obj)
 
-        # 1) 업로드된 파일이 있으면 그 URL을 최우선
+        # 1) 업로드된 파일 우선해서 profile_image_url 보정
         file_url = None
         try:
             if getattr(obj, "profile_image", None):
@@ -228,7 +227,11 @@ class ArtistSerializer(serializers.ModelSerializer):
         if file_url:
             data["profile_image_url"] = self._abs_url(file_url)
         else:
-            # 2) DB에 저장된 값이 있으면 절대URL로 보정
             data["profile_image_url"] = self._abs_url(data.get("profile_image_url"))
+
+        # 2) region: 리스트 → 문자열 변환
+        region_list = data.get("region")
+        if isinstance(region_list, list):
+            data["region"] = ", ".join(region_list)
 
         return data
