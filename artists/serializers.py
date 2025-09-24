@@ -32,20 +32,25 @@ class ArtistSerializer(serializers.ModelSerializer):
     region_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
     artist_onboarding = serializers.SerializerMethodField(read_only=True)
+    portfolio_links_display = serializers.SerializerMethodField(read_only=True)  # ✅ 추가
 
     class Meta:
         model = Artist
         fields = [
             "id", "user", "name", "bio", "number_of_members",
             "categories", "categories_display", "custom_category",
-            "equipments", "equipments_display", "portfolio_links",
-            "profile_image", "profile_image_url", "region", "region_display",
-            "desired_pay", "is_free_allowed", "phone_number", "created_at",
+            "equipments", "equipments_display",
+            "portfolio_links", "portfolio_links_display",   # ✅ 추가
+            "profile_image", "profile_image_url",
+            "region", "region_display",
+            "desired_pay", "is_free_allowed",
+            "phone_number", "created_at",
             "is_liked", "artist_onboarding"
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "phone_number",
-            "categories_display", "profile_image_url", "is_liked", "artist_onboarding", "region_display"
+            "categories_display", "portfolio_links_display",   # ✅ 추가
+            "profile_image_url", "is_liked", "artist_onboarding", "region_display"
         ]
 
     # ---------- helpers ----------
@@ -104,6 +109,14 @@ class ArtistSerializer(serializers.ModelSerializer):
             not field or (hasattr(field, "__len__") and not len(field))
             for field in required_fields
         )
+
+    def get_portfolio_links_display(self, obj):
+        value = getattr(obj, "portfolio_links", [])
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            return [value]
+        return []
 
     # ---------- core create/update ----------
     def create(self, validated_data):
