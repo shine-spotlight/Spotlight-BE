@@ -114,10 +114,14 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if Artist.objects.filter(user=request.user).exists():
             return bad_request("이미 아티스트 프로필이 있습니다.", "user")
-        mutable_data = request.data.copy()
+
+        # ✅ deepcopy 방지 (파일 객체 그대로 둠)
+        mutable_data = {k: request.data.get(k) for k in request.data.keys()}
+
         serializer = self.get_serializer(data=mutable_data)
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
+
         self._handle_m2m_fields(mutable_data, serializer.instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -159,7 +163,8 @@ class ArtistViewSet(viewsets.ModelViewSet):
             return forbidden("본인만 수정 가능합니다")
         partial = kwargs.pop('partial', False)
         # _norm_json 적용
-        mutable_data = request.data.copy()
+        mutable_data = {k: request.data.get(k) for k in request.data.keys()}
+
         for field in ["portfolio_links", "region"]:
             if field in mutable_data:
                 try:
