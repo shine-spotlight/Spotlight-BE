@@ -159,35 +159,66 @@ class ArtistSerializer(serializers.ModelSerializer):
         return artist
 
     # ---------- request/response shaping ----------
+    # ----------------------------
+    # 공통 리스트 처리 함수
+    # ----------------------------
+    def validate_list_field(self, value, field_name):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return []
+            # JSON 문자열인지 확인
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                pass
+            # Python literal 형태인지 확인
+            try:
+                parsed = ast.literal_eval(value)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(x).strip() for x in parsed if str(x).strip()]
+            except Exception:
+                pass
+            return [value]  # 그냥 단일 값으로 fallback
+        if isinstance(value, (list, tuple)):
+            return [str(x).strip() for x in value if str(x).strip()]
+        raise serializers.ValidationError({field_name: "리스트 형태여야 합니다."})
+
+    # ----------------------------
+    # validate 오버라이드
+    # ----------------------------
     def validate(self, attrs):
         # categories
-        categories = self.initial_data.get("categories")
-        if categories and isinstance(categories, str):
-            try:
-                categories = json.loads(categories)  # 문자열이 JSON 배열인 경우
-            except Exception:
-                categories = [categories]  # 그냥 문자열이면 리스트로 감싸기
+        categories_names = self.validate_list_field(self.initial_data.get("categories"), "categories")
+        if categories_names:
+            categories_names = [_norm_name(cat) for cat in categories_names if isinstance(cat, str)]
+            categories = list(Category.objects.filter(name__in=categories_names))
+            if len(categories) != len(categories_names):
+                found_names = {c.name for c in categories}
+                not_found = set(categories_names) - found_names
+                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
             attrs["categories"] = categories
 
         # equipments
-        equipments = self.initial_data.get("equipments")
-        if equipments and isinstance(equipments, str):
-            try:
-                equipments = json.loads(equipments)
-            except Exception:
-                equipments = [equipments]
+        equipments_names = self.validate_list_field(self.initial_data.get("equipments"), "equipments")
+        if equipments_names:
+            equipments_names = [_norm_name(eq) for eq in equipments_names if isinstance(eq, str)]
+            equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
+            if len(equipments) != len(equipments_names):
+                found_names = {e.name for e in equipments}
+                not_found = set(equipments_names) - found_names
+                raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
 
         # region
-        region = self.initial_data.get("region")
-        if region and isinstance(region, str):
-            try:
-                region = json.loads(region)
-            except Exception:
-                region = [region]
-            attrs["region"] = region
+        region = self.validate_list_field(self.initial_data.get("region"), "region")
+        attrs["region"] = region
 
-        # 기존 값 유지(부분 업데이트 시)
+        # 기존 값 유지 (PATCH 대비)
         if self.instance:
             for field in [
                 "name", "bio", "number_of_members", "custom_category",
@@ -196,6 +227,7 @@ class ArtistSerializer(serializers.ModelSerializer):
             ]:
                 if field not in attrs and hasattr(self.instance, field):
                     attrs[field] = getattr(self.instance, field)
+
         return attrs
 
     def to_representation(self, obj):
