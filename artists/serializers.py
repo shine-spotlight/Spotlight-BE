@@ -23,13 +23,14 @@ def _norm_name(name: str) -> str:
 class ArtistSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    # ListField 대신 CharField로 정의
+    # region을 ListField로 변경
     categories = serializers.CharField(write_only=True, required=False)
     equipments = serializers.CharField(write_only=True, required=False)
-    region = serializers.CharField(write_only=True, required=False)
+    region = serializers.ListField(child=serializers.CharField(), required=False)  # write_only 제거
 
     categories_display = serializers.SerializerMethodField(read_only=True)
     equipments_display = serializers.SerializerMethodField(read_only=True)
+    region_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
     artist_onboarding = serializers.SerializerMethodField(read_only=True)
 
@@ -39,13 +40,13 @@ class ArtistSerializer(serializers.ModelSerializer):
             "id", "user", "name", "bio", "number_of_members",
             "categories", "categories_display", "custom_category",
             "equipments", "equipments_display", "portfolio_links",
-            "profile_image", "profile_image_url", "region",
+            "profile_image", "profile_image_url", "region", "region_display",
             "desired_pay", "is_free_allowed", "phone_number", "created_at",
             "is_liked", "artist_onboarding"
         ]
         read_only_fields = [
             "id", "created_at", "equipments_display", "phone_number",
-            "categories_display", "profile_image_url", "is_liked", "artist_onboarding"
+            "categories_display", "profile_image_url", "is_liked", "artist_onboarding", "region_display"
         ]
 
     # ---------- helpers ----------
@@ -71,14 +72,6 @@ class ArtistSerializer(serializers.ModelSerializer):
     def validate_portfolio_links(self, value):
         return _norm_to_list(value)
 
-    def validate_region(self, value):
-        if isinstance(value, str):
-            value = value.strip()
-            return [value] if value else []
-        if isinstance(value, (list, tuple)):
-            return [str(v).strip() for v in value if str(v).strip()]
-        return []
-
     def validate_profile_image_url(self, value):
         # 읽기 전용이지만 혹시 모를 쓰기 시도를 대비: http(s)만 허용
         if value and not (str(value).startswith("http://") or str(value).startswith("https://")):
@@ -91,6 +84,12 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     def get_categories_display(self, obj):
         return [c.name for c in obj.categories.all()]
+
+    def get_region_display(self, obj):
+        region = getattr(obj, "region", None)
+        if isinstance(region, list):
+            return ", ".join(region)
+        return region or ""
 
     def get_is_liked(self, obj):
         request = self.context.get("request", None)
@@ -111,13 +110,15 @@ class ArtistSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         categories = validated_data.pop("categories", [])
         equipments = validated_data.pop("equipments", [])
+        region = validated_data.pop("region", [])
         artist = super().create(validated_data)
-
         if categories:
             artist.categories.set(categories)
         if equipments:
             artist.equipments.set(equipments)
-
+        if region is not None:
+            artist.region = region
+            artist.save(update_fields=["region"])
         # 파일 업로드가 있었다면 DB의 profile_image_url 동기화 (절대URL 저장)
         if getattr(artist, "profile_image", None):
             try:
@@ -134,6 +135,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         categories = validated_data.pop("categories", None)
         equipments = validated_data.pop("equipments", None)
+        region = validated_data.pop("region", None)
 
         artist = super().update(instance, validated_data)
 
@@ -141,6 +143,9 @@ class ArtistSerializer(serializers.ModelSerializer):
             artist.categories.set(categories)
         if equipments is not None:
             artist.equipments.set(equipments)
+        if region is not None:
+            artist.region = region
+            artist.save(update_fields=["region"])
 
         # 파일이 갱신되었을 수 있으니 절대URL 재계산·저장
         if getattr(artist, "profile_image", None):
@@ -210,7 +215,7 @@ class ArtistSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
 
-        # region
+        # region (항상 리스트로)
         region = self.validate_list_field(self.initial_data.get("region"), "region")
         attrs["region"] = region
 
@@ -228,9 +233,8 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
-        print("👉 ArtistSerializer output:", data)  # Debug print문 추가
-
-        # 1) 업로드된 파일 우선해서 profile_image_url 보정
+        print("👉 ArtistSerializer output:", data)
+        # profile_image_url 보정만 남기고 region join은 제거
         file_url = None
         try:
             if getattr(obj, "profile_image", None):
@@ -242,10 +246,5 @@ class ArtistSerializer(serializers.ModelSerializer):
             data["profile_image_url"] = self._abs_url(file_url)
         else:
             data["profile_image_url"] = self._abs_url(data.get("profile_image_url"))
-
-        # 2) region: 리스트 → 문자열 변환
-        region_list = data.get("region")
-        if isinstance(region_list, list):
-            data["region"] = ", ".join(region_list)
 
         return data

@@ -6,6 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
 
 from .models import Artist
 from artistequipments.models import ArtistEquipment
@@ -369,29 +370,33 @@ class ArtistViewSet(viewsets.ModelViewSet):
     )
     @transaction.atomic
     @action(detail=False, methods=["get"], url_path="filter")
-    def filter_artists(self, request):
+    def filter_artists(self, request, *args, **kwargs):
         qs = self.queryset
-        region = request.query_params.get("region")
-        # category, categories 둘 다 지원
-        category = request.query_params.get("category") or request.query_params.get("categories")
 
+        # region OR 검색 (JSONField, icontains)
+        regions = request.query_params.getlist("region")
+        if regions:
+            q = Q()
+            for r in regions:
+                q |= Q(region__icontains=r)
+            qs = qs.filter(q)
+
+        # category OR 검색 (ManyToMany)
+        categories = request.query_params.getlist("category")
+        if categories:
+            norm_categories = [_norm_name(c) for c in categories]
+            cat_objs = Category.objects.filter(name__in=norm_categories)
+            if cat_objs:
+                q = Q()
+                for cat in cat_objs:
+                    q |= Q(categories=cat)
+                qs = qs.filter(q)
+            else:
+                return Response({"detail": "존재하지 않는 카테고리"}, status=400)
+
+        # pay_min, pay_max AND 조건
         pay_min = request.query_params.get("pay_min")
         pay_max = request.query_params.get("pay_max")
-
-        if region:
-            norm_region = _norm_name(region)
-            qs = qs.filter(region__icontains=norm_region)
-
-        if category:
-            # 쉼표로 여러 개 들어올 수 있음
-            category_names = [c.strip() for c in category.split(",") if c.strip()]
-            cat_objs = Category.objects.filter(name__in=category_names)
-            if cat_objs.count() != len(category_names):
-                found = set(c.name for c in cat_objs)
-                missing = set(category_names) - found
-                return Response({"detail": f"존재하지 않는 카테고리: {', '.join(missing)}"}, status=400)
-            qs = qs.filter(categories__in=cat_objs)
-
         if pay_min:
             qs = qs.filter(desired_pay__gte=int(pay_min))
         if pay_max:
