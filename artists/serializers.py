@@ -25,7 +25,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     categories = serializers.CharField(write_only=True, required=False)
     equipments = serializers.CharField(write_only=True, required=False)
-    region = serializers.CharField(write_only=True, required=False)  # ✅ CharField + write_only
+    region = serializers.CharField(required=False)  # ✅ CharField + write_only
 
     categories_display = serializers.SerializerMethodField(read_only=True)
     equipments_display = serializers.SerializerMethodField(read_only=True)
