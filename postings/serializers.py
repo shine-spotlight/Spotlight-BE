@@ -43,11 +43,6 @@ def _norm_to_list(value):
     return normed
 
 
-def _norm_name(name: str) -> str:
-    """문자열 정규화 (소문자 + 공백 정리)"""
-    return "".join(str(name).strip().split()).lower()
-
-
 class PostingSerializer(serializers.ModelSerializer):
     space_id = serializers.PrimaryKeyRelatedField(
         queryset=Space.objects.all(), source="space", write_only=True, required=False
@@ -56,14 +51,12 @@ class PostingSerializer(serializers.ModelSerializer):
     space_address = serializers.CharField(source="space.address", read_only=True)
     place_region = serializers.CharField(source="space.place_region", read_only=True)
 
-    # ✅ 이미지 업로드 (단일 파일)
     posting_image = serializers.ImageField(write_only=True, required=False)
     posting_image_url = serializers.URLField(read_only=True)
 
-    # ✅ 카테고리 문자열 배열
     categories = serializers.ListField(
         child=serializers.CharField(), write_only=True, required=False
-    )    
+    )
     category_names = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -82,20 +75,77 @@ class PostingSerializer(serializers.ModelSerializer):
             "space_address", "posting_image_url", "place_region"
         ]
 
-    def to_internal_value(self, data):
-        # QueryDict는 immutable이므로 복사본을 만들어 수정
-        print("DEBUG: data input =", data)
-        mutable_data = data.copy() if hasattr(data, "copy") else dict(data)
-        categories = mutable_data.get("categories")
-        print("DEBUG: categories input =", categories)
-        if categories is not None:
+    # ----------------------------
+    # 정규화 함수 (Posting 내부)
+    # ----------------------------
+    def _norm_name(self, name: str) -> str:
+        # 소문자, 다중 공백 축약, strip
+        return " ".join(str(name).strip().split()).lower()
+
+    def _norm_json(self, value, field="value"):
+        """
+        문자열/리스트/딕셔너리 모두 받아 일관된 list|dict 로 변환.
+        리스트 내부 문자열은 _norm_name 적용.
+        """
+        import json, ast
+
+        if value is None:
+            return []
+
+        if isinstance(value, (list, tuple)):
+            return [self._norm_name(v) if isinstance(v, str) else v for v in value]
+
+        if isinstance(value, dict):
+            return value
+
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return []
             try:
-                parsed = json.loads(categories)
-                mutable_data["categories"] = parsed
+                parsed = json.loads(s)
+                if isinstance(parsed, (list, tuple)):
+                    return [self._norm_name(v) if isinstance(v, str) else v for v in parsed]
+                if isinstance(parsed, dict):
+                    return parsed
             except Exception:
-                # fallback: 쉼표로 분리
-                mutable_data["categories"] = [x for x in str(categories).split(",") if x.strip()]
-        return super().to_internal_value(mutable_data)
+                pass
+            try:
+                parsed = ast.literal_eval(s)
+                if isinstance(parsed, (list, tuple)):
+                    return [self._norm_name(v) if isinstance(v, str) else v for v in parsed]
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+            # 콤마로 구분된 단일 문자열도 분해
+            if "," in s:
+                return [self._norm_name(x) for x in s.split(",") if x.strip()]
+            return [self._norm_name(s)]
+
+        return [value]
+
+    # ----------------------------
+    # to_internal_value (파일 deepcopy 금지 + 카테고리 정규화)
+    # ----------------------------
+    def to_internal_value(self, data):
+        # 평평한 dict 생성 (파일 객체 deepcopy 안 함)
+        payload = {k: data.get(k) for k in data.keys()} if hasattr(data, "keys") else dict(data)
+
+        # categories 정규화
+        if hasattr(data, "getlist"):  # QueryDict
+            raw = data.getlist("categories")
+            if len(raw) == 0:
+                cats = []
+            elif len(raw) == 1:
+                cats = self._norm_json(raw[0], "categories")
+            else:
+                cats = self._norm_json(raw, "categories")
+        else:
+            cats = self._norm_json(payload.get("categories"), "categories")
+
+        payload["categories"] = cats
+        return super().to_internal_value(payload)
 
     # ----------------------------
     # 출력
@@ -104,22 +154,17 @@ class PostingSerializer(serializers.ModelSerializer):
         return [c.name for c in obj.categories.all()]
 
     # ----------------------------
-    # 카테고리 매핑 유틸
+    # 카테고리 매핑
     # ----------------------------
     def _map_categories(self, categories_data):
-        """입력값 정규화 후 DB 이름 정규화 비교"""
-        print("DEBUG: categories input =", categories_data)
         if not categories_data:
             return []
 
-        normed_input = [_norm_name(c) for c in categories_data]
-
-        # DB 카테고리 전부 불러와서 정규화
+        normed_input = [self._norm_name(c) for c in categories_data]
         all_cats = Category.objects.all()
-        name_map = {_norm_name(c.name): c for c in all_cats}
+        name_map = {self._norm_name(c.name): c for c in all_cats}
 
-        cats = []
-        missing = []
+        cats, missing = [], []
         for ni in normed_input:
             if ni in name_map:
                 cats.append(name_map[ni])

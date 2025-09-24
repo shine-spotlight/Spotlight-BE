@@ -367,7 +367,8 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def filter_artists(self, request):
         qs = self.queryset
         region = request.query_params.get("region")
-        category = request.query_params.get("category")  # 변수명은 단수형 유지
+        # category, categories 둘 다 지원
+        category = request.query_params.get("category") or request.query_params.get("categories")
 
         pay_min = request.query_params.get("pay_min")
         pay_max = request.query_params.get("pay_max")
