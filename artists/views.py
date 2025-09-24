@@ -383,7 +383,7 @@ class ArtistViewSet(viewsets.ModelViewSet):
             qs = qs.filter(q)
 
         # category OR 검색 (ManyToMany)
-        categories = request.query_params.getlist("category")
+        categories = request.query_params.getlist("categories")
         if categories:
             norm_categories = [_norm_name(c) for c in categories]
             cat_objs = Category.objects.filter(name__in=norm_categories)
