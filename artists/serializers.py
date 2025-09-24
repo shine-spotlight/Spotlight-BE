@@ -160,47 +160,32 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     # ---------- request/response shaping ----------
     def validate(self, attrs):
-        # categories (공연 카테고리)
-        categories_names = self.initial_data.get("categories")
-        if categories_names is not None:
-            if isinstance(categories_names, str):
-                try:
-                    categories_names = json.loads(categories_names)
-                except Exception:
-                    try:
-                        categories_names = ast.literal_eval(categories_names)
-                    except Exception:
-                        raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
-            if not isinstance(categories_names, list):
-                raise serializers.ValidationError({"categories": "리스트 형태여야 합니다."})
-            categories_names = [_norm_name(cat) for cat in categories_names if isinstance(cat, str)]
-            categories = list(Category.objects.filter(name__in=categories_names))
-            if len(categories) != len(categories_names):
-                found_names = {c.name for c in categories}
-                not_found = set(categories_names) - found_names
-                raise serializers.ValidationError({"categories": f"존재하지 않는 카테고리: {', '.join(not_found)}"})
+        # categories
+        categories = self.initial_data.get("categories")
+        if categories and isinstance(categories, str):
+            try:
+                categories = json.loads(categories)  # 문자열이 JSON 배열인 경우
+            except Exception:
+                categories = [categories]  # 그냥 문자열이면 리스트로 감싸기
             attrs["categories"] = categories
 
-        # equipments (장비 카테고리)
-        equipments_names = self.initial_data.get("equipments")
-        if equipments_names is not None:
-            if isinstance(equipments_names, str):
-                try:
-                    equipments_names = json.loads(equipments_names)
-                except Exception:
-                    try:
-                        equipments_names = ast.literal_eval(equipments_names)
-                    except Exception:
-                        raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
-            if not isinstance(equipments_names, list):
-                raise serializers.ValidationError({"equipments": "리스트 형태여야 합니다."})
-            equipments_names = [_norm_name(eq) for eq in equipments_names if isinstance(eq, str)]
-            equipments = list(EquipmentCategory.objects.filter(name__in=equipments_names))
-            if len(equipments) != len(equipments_names):
-                found_names = set([e.name for e in equipments])
-                not_found = set(equipments_names) - found_names
-                raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
+        # equipments
+        equipments = self.initial_data.get("equipments")
+        if equipments and isinstance(equipments, str):
+            try:
+                equipments = json.loads(equipments)
+            except Exception:
+                equipments = [equipments]
             attrs["equipments"] = equipments
+
+        # region
+        region = self.initial_data.get("region")
+        if region and isinstance(region, str):
+            try:
+                region = json.loads(region)
+            except Exception:
+                region = [region]
+            attrs["region"] = region
 
         # 기존 값 유지(부분 업데이트 시)
         if self.instance:
