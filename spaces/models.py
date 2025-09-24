@@ -76,17 +76,66 @@ class Space(models.Model):
     @staticmethod
     def extract_region_from_address(address: str) -> str:
         if not address:
-            return None
-        # "서울특별시 강남구" 같은 패턴 우선 추출
-        pattern = r'([가-힣]+(특별시|광역시|자치시|자치도|도|시)\s?[가-힣]+(시|군|구))'
-        m = re.search(pattern, address)
-        if m:
-            return m.group(1)
-        # 토큰 단위로 잘라 앞 2개까지만
-        parts = address.split()
-        if len(parts) >= 2:
-            return f"{parts[0]} {parts[1]}"
-        return parts[0] if parts else None
+            return ""
+
+        parts = address.strip().split()
+        if not parts:
+            return ""
+
+        first = parts[0]  # 도/광역시 후보
+        second = parts[1] if len(parts) > 1 else ""
+
+        # --- 도/광역시 정규화 ---
+        if first.startswith("서울"):
+            first = "서울특별시"
+        elif first.startswith("부산"):
+            first = "부산광역시"
+        elif first.startswith("대구"):
+            first = "대구광역시"
+        elif first.startswith("인천"):
+            first = "인천광역시"
+        elif first.startswith("광주"):
+            first = "광주광역시"
+        elif first.startswith("대전"):
+            first = "대전광역시"
+        elif first.startswith("울산"):
+            first = "울산광역시"
+        elif first.startswith("세종"):
+            return "세종특별자치시"
+        elif first.startswith("제주"):
+            first = "제주특별자치도"
+        elif first.startswith("강원"):
+            first = "강원특별자치도"
+        elif first.startswith("경기"):
+            first = "경기도"
+        elif first.startswith("충북") or first.startswith("충청북"):
+            first = "충청북도"
+        elif first.startswith("충남") or first.startswith("충청남"):
+            first = "충청남도"
+        elif first.startswith("전북") or first.startswith("전라북"):
+            first = "전북특별자치도"
+        elif first.startswith("전남") or first.startswith("전라남"):
+            first = "전라남도"
+        elif first.startswith("경북") or first.startswith("경상북"):
+            first = "경상북도"
+        elif first.startswith("경남") or first.startswith("경상남"):
+            first = "경상남도"
+
+        # --- 저장 규칙 ---
+        if second:
+            # 도 단위: 시/군까지만
+            if first.endswith("도") or "특별자치도" in first:
+                if second.endswith("시") or second.endswith("군"):
+                    return f"{first} {second}"
+                return first  # 군/시 아니면 도까지만
+
+            # 광역시/특별시: 구까지만
+            if "광역시" in first or first == "서울특별시":
+                if second.endswith("구"):
+                    return f"{first} {second}"
+                return first  # 구 아니면 광역시까지만
+
+        return first
 
     @property
     def phone_number(self):
