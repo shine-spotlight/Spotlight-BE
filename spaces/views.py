@@ -308,13 +308,19 @@ class SpaceViewSet(viewsets.ModelViewSet):
         if region:
             qs = qs.filter(place_region__icontains=region)
         if category:
-            # category는 이름(문자열)으로 받음 → 정규화 후 name으로 필터
             norm_category = _norm_name(category)
-            try:
-                cat_obj = SpaceCategory.objects.get(name=norm_category)
+
+            # SpaceCategory 매칭
+            cat_obj = SpaceCategory.objects.filter(name=norm_category).first()
+            if cat_obj:
                 qs = qs.filter(categories=cat_obj)
-            except SpaceCategory.DoesNotExist:
-                return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
+            else:
+                # Category(선호 카테고리) 매칭
+                pref_obj = Category.objects.filter(name=norm_category).first()
+                if pref_obj:
+                    qs = qs.filter(preferred_categories=pref_obj)
+                else:
+                    return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
         if cap_min:
             qs = qs.filter(capacity_seated__gte=int(cap_min))
         if cap_max:
