@@ -25,7 +25,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     categories = serializers.CharField(write_only=True, required=False)
     equipments = serializers.CharField(write_only=True, required=False)
-    region = serializers.ListField(child=serializers.CharField(), required=False)  # write_only 제거
+    region = serializers.CharField(write_only=True, required=False)  # ✅ CharField + write_only
 
     categories_display = serializers.SerializerMethodField(read_only=True)
     equipments_display = serializers.SerializerMethodField(read_only=True)
@@ -192,6 +192,12 @@ class ArtistSerializer(serializers.ModelSerializer):
     # validate 오버라이드
     # ----------------------------
     def validate(self, attrs):
+        # region: CharField로 받아서 항상 리스트로 변환
+        region_value = self.initial_data.get("region")
+        if region_value is not None:
+            attrs["region"] = self.validate_list_field(region_value, "region")
+        # 기존 categories, equipments 등 검증 로직은 그대로 유지
+        # (아래 기존 validate 코드 이어서 작성)
         # categories
         categories_names = self.validate_list_field(self.initial_data.get("categories"), "categories")
         if categories_names:
@@ -213,10 +219,6 @@ class ArtistSerializer(serializers.ModelSerializer):
                 not_found = set(equipments_names) - found_names
                 raise serializers.ValidationError({"equipments": f"존재하지 않는 장비: {', '.join(not_found)}"})
             attrs["equipments"] = equipments
-
-        # region (항상 리스트로)
-        region = self.validate_list_field(self.initial_data.get("region"), "region")
-        attrs["region"] = region
 
         # 기존 값 유지 (PATCH 대비)
         if self.instance:
