@@ -373,29 +373,27 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def filter_artists(self, request, *args, **kwargs):
         qs = self.queryset
 
-        # region OR 검색 (JSONField, 배열 포함)
-        regions = request.query_params.getlist("region")
-        if regions:
-            q = Q()
-            for r in regions:
-                # JSON 배열에 해당 원소가 포함되어 있는지 확인
-                q |= Q(region__contains=[r])
-            qs = qs.filter(q)
+        # ✅ region: "서울, 부산, 대구 동구" 형식 → split 후 OR 검색
+        region_param = request.query_params.get("region")
+        if region_param:
+            regions = [r.strip() for r in region_param.split(",") if r.strip()]
+            if regions:
+                q = Q()
+                for r in regions:
+                    q |= Q(region__icontains=r)
+                qs = qs.filter(q)
 
-        # category OR 검색 (ManyToMany)
-        categories = request.query_params.getlist("categories")
+        # ✅ category: categories 파라미터 (여러 개 가능, OR 조건)
+        categories = request.query_params.getlist("categories") or request.query_params.getlist("category")
         if categories:
             norm_categories = [_norm_name(c) for c in categories]
             cat_objs = Category.objects.filter(name__in=norm_categories)
-            if cat_objs:
-                q = Q()
-                for cat in cat_objs:
-                    q |= Q(categories=cat)
-                qs = qs.filter(q)
+            if cat_objs.exists():
+                qs = qs.filter(categories__in=cat_objs).distinct()
             else:
-                return Response({"detail": "존재하지 않는 카테고리"}, status=400)
+                return Response({"detail": f"존재하지 않는 카테고리: {categories}"}, status=400)
 
-        # pay_min, pay_max AND 조건
+        # ✅ pay_min, pay_max
         pay_min = request.query_params.get("pay_min")
         pay_max = request.query_params.get("pay_max")
         if pay_min:

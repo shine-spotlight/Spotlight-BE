@@ -181,20 +181,15 @@ class PostingSerializer(serializers.ModelSerializer):
     # create/update
     # ----------------------------
     def create(self, validated_data):
-        validated_data.pop("posting_image", None)
         categories_data = validated_data.pop("categories", [])
-        posting = super().create(validated_data)
-
+        posting = super().create(validated_data)   # posting_image도 같이 저장됨
         cats = self._map_categories(categories_data)
         posting.categories.set(cats)
         return posting
 
     def update(self, instance, validated_data):
-        validated_data.pop("posting_image", None)
         categories_data = validated_data.pop("categories", None)
-
-        posting = super().update(instance, validated_data)
-
+        posting = super().update(instance, validated_data)  # posting_image 같이 업데이트
         if categories_data is not None:
             cats = self._map_categories(categories_data)
             posting.categories.set(cats)
