@@ -16,6 +16,7 @@ from spaces.models import SpaceCategory
 import json
 from django.db import models
 import ast
+from django.db.models import Q
 
 # 에러 포맷 통일배포
 def bad_request(detail: str, field: str):
@@ -329,8 +330,19 @@ class SpaceViewSet(viewsets.ModelViewSet):
                     else:
                         return Response({"detail": f"존재하지 않는 카테고리: {category}"}, status=400)
 
-        if region:
+        # ✅ region 다중 or 검색 지원
+        regions = request.query_params.getlist("region")
+        if regions:
+            def _normalize_region(r):
+                return " ".join(str(r).strip().split())
+            norm_regions = [_normalize_region(r) for r in regions]
+            q = Q()
+            for r in norm_regions:
+                q |= Q(place_region__icontains=r)
+            qs = qs.filter(q)
+        elif region:
             qs = qs.filter(place_region__icontains=region)
+
         if cap_min:
             qs = qs.filter(capacity_seated__gte=int(cap_min))
         if cap_max:

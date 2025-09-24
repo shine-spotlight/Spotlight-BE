@@ -228,6 +228,7 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
+        print("👉 ArtistSerializer output:", data)  # Debug print문 추가
 
         # 1) 업로드된 파일 우선해서 profile_image_url 보정
         file_url = None
