@@ -71,11 +71,8 @@ class Posting(models.Model):
         # ✅ posting_image_url 자동 갱신
         if self.posting_image and hasattr(self.posting_image, "url"):
             url = self.posting_image.url  # Cloudinary면 절대경로 반환됨
-            if self.posting_image_url != url:
+            if url and self.posting_image_url != url:
                 Posting.objects.filter(pk=self.pk).update(posting_image_url=url)
-        else:
-            if self.posting_image_url:
-                Posting.objects.filter(pk=self.pk).update(posting_image_url="")
 
     def __str__(self):
         return f"[{self.id}] {self.title}"

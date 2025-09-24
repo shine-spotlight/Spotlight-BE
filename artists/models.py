@@ -2,6 +2,7 @@ from django.db import models
 from users.models import User
 from categories.models import Category
 from equipmentcategories.models import EquipmentCategory
+from cloudinary_storage.storage import MediaCloudinaryStorage  # 추가
 
 
 class Artist(models.Model):
@@ -27,6 +28,7 @@ class Artist(models.Model):
     portfolio_links = models.JSONField(default=list, blank=True)
     profile_image = models.ImageField(
         upload_to="artists/profile/",
+        storage=MediaCloudinaryStorage(),  # Cloudinary 스토리지 적용
         blank=True,
         null=True,
         max_length=10000
