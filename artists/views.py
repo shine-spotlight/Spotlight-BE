@@ -373,12 +373,13 @@ class ArtistViewSet(viewsets.ModelViewSet):
     def filter_artists(self, request, *args, **kwargs):
         qs = self.queryset
 
-        # region OR 검색 (JSONField, icontains)
+        # region OR 검색 (JSONField, 배열 포함)
         regions = request.query_params.getlist("region")
         if regions:
             q = Q()
             for r in regions:
-                q |= Q(region__icontains=r)
+                # JSON 배열에 해당 원소가 포함되어 있는지 확인
+                q |= Q(region__contains=[r])
             qs = qs.filter(q)
 
         # category OR 검색 (ManyToMany)

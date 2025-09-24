@@ -23,7 +23,6 @@ def _norm_name(name: str) -> str:
 class ArtistSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    # region을 ListField로 변경
     categories = serializers.CharField(write_only=True, required=False)
     equipments = serializers.CharField(write_only=True, required=False)
     region = serializers.ListField(child=serializers.CharField(), required=False)  # write_only 제거
@@ -248,3 +247,8 @@ class ArtistSerializer(serializers.ModelSerializer):
             data["profile_image_url"] = self._abs_url(data.get("profile_image_url"))
 
         return data
+
+    def validate_region(self, value):
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        return value
