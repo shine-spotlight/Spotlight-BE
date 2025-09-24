@@ -300,6 +300,8 @@ class SpaceViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     @action(detail=False, methods=["get"], url_path="filter")
     def filter_spaces(self, request):
+        print("👉 Query Params:", request.query_params)  # 렌더 로그에 찍힘
+        print("👉 Raw region:", request.query_params.getlist("region"))
         qs = self.queryset
         region = request.query_params.get("region")
         cap_min = request.query_params.get("cap_min")
