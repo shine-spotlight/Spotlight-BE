@@ -23,19 +23,15 @@ def _norm_name(name: str) -> str:
 class ArtistSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
-    categories = serializers.ListField(
-        child=serializers.CharField(), write_only=True, required=False
-    )
+    # ListField 대신 CharField로 정의
+    categories = serializers.CharField(write_only=True, required=False)
+    equipments = serializers.CharField(write_only=True, required=False)
+    region = serializers.CharField(write_only=True, required=False)
+
     categories_display = serializers.SerializerMethodField(read_only=True)
-    equipments = serializers.ListField(
-        child=serializers.CharField(), write_only=True, required=False
-    )
     equipments_display = serializers.SerializerMethodField(read_only=True)
     is_liked = serializers.SerializerMethodField(read_only=True)
     artist_onboarding = serializers.SerializerMethodField(read_only=True)
-    region = serializers.ListField(
-        child=serializers.CharField(), required=False
-    )
 
     class Meta:
         model = Artist
